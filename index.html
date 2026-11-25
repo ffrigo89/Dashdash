@@ -138,7 +138,7 @@ const AI_CFG = [
 ];
 
 // slingshot mode tuning
-const SLING_MAX = 1150, SLING_DAMP = 1.5;
+let SLING_MAX = 980, SLING_DAMP = 1.7, ANCHOR = 2, SLING_E = .8, SHRINK = 40;  // the waiting blob is planted: counts as heavier when hit
 const SL_AI = [ { n:10, an:.22, pn:.25 }, { n:32, an:.07, pn:.08 }, { n:90, an:.015, pn:.03 } ];
 let W = 0, H = 0, DPR = 1, portrait = true;
 const view = { cx:0, cy:0, s:1 };
@@ -412,7 +412,7 @@ function updatePlayer(p, dt, control){
   }
   if (game.sling) {
     p.r += ((p.pu.big > 0 ? 52 : 34) - p.r) * Math.min(1, dt*8);
-    p.m = p.pu.big > 0 ? 2.3 : 1;
+    p.m = (p.pu.big > 0 ? 2.3 : 1) * (game.turn !== p.i ? ANCHOR : 1);
     p.stun -= dt;
     slingBody(p, dt);
     if (p.vx*p.vx + p.vy*p.vy > 420*420) p.trail.push({ x:p.x, y:p.y, r:p.r, life:.18 });
@@ -458,7 +458,7 @@ function collide(a, b, quiet){
   a.x -= nx*ov*b.m/tm; a.y -= ny*ov*b.m/tm; b.x += nx*ov*a.m/tm; b.y += ny*ov*a.m/tm;
   const rv = (b.vx - a.vx)*nx + (b.vy - a.vy)*ny;
   if (rv >= 0) return;
-  const j = -(1 + .85)*rv / (1/a.m + 1/b.m);
+  const j = -(1 + (game.sling ? SLING_E : .85))*rv / (1/a.m + 1/b.m);
   a.vx -= j*nx/a.m; a.vy -= j*ny/a.m; b.vx += j*nx/b.m; b.vy += j*ny/b.m;
   let power = Math.min(1, -rv/900), dashed = false;
   const hitWith = (att, vic, sx, sy) => {
@@ -490,7 +490,8 @@ const launchSpeed = (p, pow) => SLING_MAX * pow * (p.pu.turbo > 0 ? 1.25 : 1);
 const turnName = i => game.mode === 1 ? (i === 0 ? 'YOUR TURN!' : 'CPU TURN') : nameOf(i) + ' TURN';
 function startTurn(i){
   const P = game.players, p = P[i], o = P[1 - i];
-  game.turn = i; game.sub = 'aim'; game.still = 0; game.moveT = 0;
+  game.turn = i; game.sub = 'aim';
+  P.forEach(q => q.m = (q.pu.big > 0 ? 2.3 : 1) * (q.i !== i ? ANCHOR : 1)); game.still = 0; game.moveT = 0;
   p.aim = p.aim0 = Math.atan2(o.y - p.y, o.x - p.x); p.pull = 0; p.wasDown = true; p.plan = null; p.aiT = 0; p.rotHold = 0;
   if (dragS) dragS = null;
   if (!game.demo) banner(turnName(i), null, COL[i].main);
@@ -507,7 +508,7 @@ function endTurn(){
   for (const k in p.pu) if (p.pu[k] > 0 && !p.puNew[k]) p.pu[k]--;
   P.forEach(q => q.puNew = {});
   game.turnCount++;
-  if (game.turnCount % 2 === 0) game.Rtarget = Math.max(MIN_R, game.Rtarget - 26);
+  if (game.turnCount % 2 === 0) game.Rtarget = Math.max(MIN_R, game.Rtarget - SHRINK);
   game.powerups.forEach(pu => { pu.turns--; if (pu.turns <= 0) pu.life = -1; });
   game.powerups = game.powerups.filter(pu => pu.life > 0);
   if (!game.powerups.length && game.turnCount % 3 === 2) {
