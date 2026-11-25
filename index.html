@@ -86,6 +86,7 @@
       <button class="big b1" id="play1">1 Player<small>vs CPU</small></button>
       <button class="big b2" id="play2">2 Players<small>same device</small></button>
     </div>
+    <div class="opt"><span>Mode</span><div class="seg" id="mode"><button data-v="0" class="on">Real-time</button><button data-v="1">Slingshot</button></div></div>
     <div class="opt"><span>CPU level</span><div class="seg" id="diff"><button data-v="0">Easy</button><button data-v="1" class="on">Normal</button><button data-v="2">Hard</button></div></div>
     <div class="opt"><span>First to</span><div class="seg" id="tgt"><button data-v="3" class="on">3</button><button data-v="5">5</button><button data-v="7">7</button></div></div>
     <div class="help" id="help"></div>
@@ -136,6 +137,9 @@ const AI_CFG = [
   { react:.07, noise:.07, dash:.85, edge:100, smart:.95, dodge:.8  }
 ];
 
+// slingshot mode tuning
+const SLING_MAX = 1150, SLING_DAMP = 1.5;
+const SL_AI = [ { n:10, an:.22, pn:.25 }, { n:32, an:.07, pn:.08 }, { n:90, an:.015, pn:.03 } ];
 let W = 0, H = 0, DPR = 1, portrait = true;
 const view = { cx:0, cy:0, s:1 };
 let area = { x:0, y:0, w:0, h:0 };
@@ -143,6 +147,7 @@ let area = { x:0, y:0, w:0, h:0 };
 const game = {
   state:'countdown', demo:true, mode:1, diff:1, target:3, score:[0,0],
   R:BASE_R, time:0, timer:0, pending:null, t:0,
+  sling:false, slingSel:false, sub:'', turn:0, roundNo:0, Rtarget:BASE_R, still:0, moveT:0, turnCount:0,
   players:[], powerups:[], parts:[], texts:[], shake:0, banner:null, nextPU:5, paused:false
 };
 
@@ -300,7 +305,7 @@ addEventListener('orientationchange', () => setTimeout(layout, 120));
 function makePlayer(i, ai){
   return { i, ai, x:0, y:0, vx:0, vy:0, r:34, m:1, fx:0, fy:0, dashT:0, ddx:0, ddy:0, cd:0, stun:0,
            falling:-1, splashed:false, pu:{ big:0, turbo:0, boing:0 }, wantDash:0, aiIn:{x:0,y:0}, aiT:0,
-           blink:2+Math.random()*3, hit:0, trail:[] };
+           blink:2+Math.random()*3, hit:0, trail:[], aim:0, aim0:0, pull:0, wasDown:false, plan:null, rotHold:0, ox:0, oy:0, puNew:{} };
 }
 function horizontalStart(){ return !(isTouch && portrait); }
 function placePlayers(){
@@ -308,18 +313,21 @@ function placePlayers(){
   game.players.forEach((p, i) => {
     const s = i ? 1 : -1;
     Object.assign(p, { x: hz ? s*d : 0, y: hz ? 0 : -s*d, vx:0, vy:0, r:34, m:1, dashT:0, cd:0, stun:0,
-      falling:-1, splashed:false, pu:{ big:0, turbo:0, boing:0 }, wantDash:0, aiIn:{x:0,y:0}, hit:0, trail:[] });
+      falling:-1, splashed:false, pu:{ big:0, turbo:0, boing:0 }, wantDash:0, aiIn:{x:0,y:0}, hit:0, trail:[], pull:0, ox:0, oy:0, plan:null, puNew:{} });
+    p.aim = hz ? (i ? Math.PI : 0) : (i ? Math.PI/2 : -Math.PI/2);
     p.fx = hz ? -s : 0; p.fy = hz ? 0 : s;
   });
 }
 function startRound(){
-  game.R = BASE_R; game.time = 0; game.pending = null; game.powerups = []; game.nextPU = 4 + Math.random()*2;
+  game.R = game.Rtarget = BASE_R; game.time = 0; game.pending = null; game.turnCount = 0; game.sub = 'wait';
+  if (game.sling) { game.turn = game.roundNo % 2; game.roundNo++; } game.powerups = []; game.nextPU = 4 + Math.random()*2;
   placePlayers();
   game.state = 'countdown'; game.timer = game.demo ? .6 : 3;
   if (!game.demo) { banner('3'); sfx.beep(false); }
 }
 function startMatch(mode){
-  game.demo = false; game.mode = mode; game.score = [0,0]; game.paused = false;
+  game.demo = false; game.mode = mode; game.score = [0,0]; game.paused = false; game.sling = game.slingSel; game.roundNo = 0;
+  pads.forEach((el, i) => el.querySelector('.hint').textContent = 'P' + (i+1) + (game.sling ? ' · ←→ aim · hold ↓, let go' : ' · double-tap = DASH'));
   game.players = [makePlayer(0, false), makePlayer(1, mode === 1)];
   game.parts = []; game.texts = [];
   $('#menu').classList.add('hidden'); $('#over').classList.add('hidden'); $('#pause').classList.add('hidden');
@@ -327,7 +335,7 @@ function startMatch(mode){
   layout(); startRound();
 }
 function startDemo(){
-  game.demo = true; game.mode = 2; game.paused = false;
+  game.demo = true; game.mode = 2; game.paused = false; game.sling = false;
   game.players = [makePlayer(0, true), makePlayer(1, true)];
   $('#menu').classList.remove('hidden'); $('#over').classList.add('hidden'); $('#pause').classList.add('hidden');
   layout(); startRound();
@@ -402,6 +410,15 @@ function updatePlayer(p, dt, control){
     }
     return;
   }
+  if (game.sling) {
+    p.r += ((p.pu.big > 0 ? 52 : 34) - p.r) * Math.min(1, dt*8);
+    p.m = p.pu.big > 0 ? 2.3 : 1;
+    p.stun -= dt;
+    slingBody(p, dt);
+    if (p.vx*p.vx + p.vy*p.vy > 420*420) p.trail.push({ x:p.x, y:p.y, r:p.r, life:.18 });
+    if (Math.hypot(p.x, p.y) > game.R + 8) { p.falling = 0; p.stun = 0; }
+    return;
+  }
   for (const k in p.pu) if (p.pu[k] > 0) p.pu[k] -= dt;
   const big = p.pu.big > 0, turbo = p.pu.turbo > 0;
   p.r += ((big ? 52 : 34) - p.r) * Math.min(1, dt*8);
@@ -433,7 +450,7 @@ function updatePlayer(p, dt, control){
   else if (sp > 200 && Math.random() < dt*10) burst(p.x - p.vx/sp*p.r*.8, p.y - p.vy/sp*p.r*.8 + p.r*.4, 1, '#e6f4d0', 40, 'dot', 8);
   if (Math.hypot(p.x, p.y) > game.R + 8) { p.falling = 0; p.stun = 0; }
 }
-function collide(a, b){
+function collide(a, b, quiet){
   if (a.falling >= 0 || b.falling >= 0) return;
   const dx = b.x - a.x, dy = b.y - a.y, d = Math.hypot(dx, dy), min = a.r + b.r;
   if (d >= min || d === 0) return;
@@ -454,12 +471,152 @@ function collide(a, b){
     if (aimed) { att.vx *= .35; att.vy *= .35; att.dashT = 0; dashed = true; }
   };
   hitWith(a, b, nx, ny); hitWith(b, a, -nx, -ny);
+  if (quiet) return;
   const cx = a.x + nx*a.r, cy = a.y + ny*a.r;
   if (dashed) power = Math.max(power, .85);
   game.shake = Math.max(game.shake, 4 + power*12);
   sfx.bump(power); if (power > .5) buzz(25);
   burst(cx, cy, 6 + Math.round(power*10), '#ffe066', 240 + power*200, 'star', 10);
   if (dashed || power > .7) pop(cx, cy - 20, ['POW!','BAM!','BONK!','WHAM!','BOOP!'][Math.random()*5|0], '#ffe066', 36 + power*14);
+}
+
+// ---------- slingshot mode ----------
+function slingBody(p, dt){
+  const f = Math.exp(-SLING_DAMP*dt); p.vx *= f; p.vy *= f;
+  if (p.vx*p.vx + p.vy*p.vy < 64) { p.vx = 0; p.vy = 0; }
+  p.x += p.vx*dt; p.y += p.vy*dt;
+}
+const launchSpeed = (p, pow) => SLING_MAX * pow * (p.pu.turbo > 0 ? 1.25 : 1);
+const turnName = i => game.mode === 1 ? (i === 0 ? 'YOUR TURN!' : 'CPU TURN') : nameOf(i) + ' TURN';
+function startTurn(i){
+  const P = game.players, p = P[i], o = P[1 - i];
+  game.turn = i; game.sub = 'aim'; game.still = 0; game.moveT = 0;
+  p.aim = p.aim0 = Math.atan2(o.y - p.y, o.x - p.x); p.pull = 0; p.wasDown = true; p.plan = null; p.aiT = 0; p.rotHold = 0;
+  if (dragS) dragS = null;
+  if (!game.demo) banner(turnName(i), null, COL[i].main);
+}
+function fire(p){
+  const sp = launchSpeed(p, Math.max(.06, p.pull));
+  p.vx = Math.cos(p.aim)*sp; p.vy = Math.sin(p.aim)*sp; p.fx = Math.cos(p.aim); p.fy = Math.sin(p.aim);
+  p.pull = 0; p.ox = p.oy = 0; game.sub = 'moving'; game.moveT = 0; game.still = 0;
+  sfx.dash(); buzz(15);
+  burst(p.x - p.fx*p.r, p.y - p.fy*p.r, 10, '#fff7e0', 200, 'dot', 10);
+}
+function endTurn(){
+  const P = game.players, p = P[game.turn];
+  for (const k in p.pu) if (p.pu[k] > 0 && !p.puNew[k]) p.pu[k]--;
+  P.forEach(q => q.puNew = {});
+  game.turnCount++;
+  if (game.turnCount % 2 === 0) game.Rtarget = Math.max(MIN_R, game.Rtarget - 26);
+  game.powerups.forEach(pu => { pu.turns--; if (pu.turns <= 0) pu.life = -1; });
+  game.powerups = game.powerups.filter(pu => pu.life > 0);
+  if (!game.powerups.length && game.turnCount % 3 === 2) {
+    const types = Object.keys(PU);
+    for (let tries = 0; tries < 20; tries++) {
+      const a = Math.random()*TAU, d = Math.sqrt(Math.random())*game.Rtarget*.6, x = Math.cos(a)*d, y = Math.sin(a)*d;
+      if (P.every(q => Math.hypot(q.x - x, q.y - y) > q.r + 40)) { game.powerups.push({ x, y, type:types[Math.random()*3|0], life:999, t:0, turns:4 }); break; }
+    }
+  }
+  startTurn(1 - game.turn);
+}
+function slingInput(i){
+  const t = touchIn[i], k = held[i];
+  if (t.on) {
+    const flip = isTouch && portrait && game.mode === 2 && i === 1 ? -1 : 1, tx = t.x*flip, ty = t.y*flip;
+    return { rot: tx > .38 ? 1 : tx < -.38 ? -1 : 0, down: ty > .38, up: ty < -.38 };
+  }
+  return { rot: k.r - k.l, down: !!k.d, up: !!k.u };
+}
+function aimControl(p, o, dt){
+  if (p.ai) {
+    if (!p.plan) { p.plan = aiPlan(p, o); p.aiT = 0; }
+    p.aiT += dt;
+    const k = Math.min(1, p.aiT/.75), e = k*k*(3 - 2*k);
+    let d = p.plan.ang - p.aim0; d = Math.atan2(Math.sin(d), Math.cos(d));
+    p.aim = p.aim0 + d*e;
+    if (p.aiT > .55) p.pull = Math.min(p.plan.pow, p.pull + dt*1.3);
+    if (p.aiT > 1.15 && p.pull >= p.plan.pow - 1e-6) fire(p);
+  } else if (!dragS) {
+    const inp = slingInput(p.i);
+    p.rotHold = inp.rot ? p.rotHold + dt : 0;
+    p.aim += inp.rot * (.7 + Math.min(1, p.rotHold)*1.8) * dt;
+    if (inp.down) p.pull = Math.min(1, p.pull + dt*.85);
+    if (inp.up) p.pull = Math.max(0, p.pull - dt*2);
+    if (!inp.down && p.wasDown && p.pull > .06) { p.wasDown = false; fire(p); }
+    else p.wasDown = inp.down;
+  }
+  p.ox = -Math.cos(p.aim)*p.pull*34; p.oy = -Math.sin(p.aim)*p.pull*34;
+}
+function simShot(p, o, ang, pow){
+  const R = game.Rtarget, cl = q => ({ ...q, pu:{ ...q.pu }, trail:[] });
+  const a = cl(p), b = cl(o), sp = launchSpeed(p, pow), dt = 1/60;
+  a.vx = Math.cos(ang)*sp; a.vy = Math.sin(ang)*sp; b.vx = b.vy = 0;
+  for (let s = 0; s < 540; s++) {
+    for (const q of [a, b]) if (q.falling < 0) { slingBody(q, dt); if (Math.hypot(q.x, q.y) > R + 8) q.falling = 0; }
+    collide(a, b, true);
+    if (!a.vx && !a.vy && !b.vx && !b.vy) break;
+  }
+  const af = a.falling >= 0, bf = b.falling >= 0;
+  if (af && bf) return -300;
+  if (af) return -1000;
+  if (bf) return 1000 - Math.hypot(a.x, a.y)*.5;
+  return Math.hypot(b.x, b.y) - Math.hypot(a.x, a.y)*.8;
+}
+function aiPlan(p, o){
+  const cfg = SL_AI[game.diff], base = Math.atan2(o.y - p.y, o.x - p.x);
+  let best = null;
+  for (let k = 0; k < cfg.n; k++) {
+    const ang = k < cfg.n*.65 ? base + (Math.random() - .5)*.7 : Math.random()*TAU;
+    const pow = .2 + Math.random()*.8, sc = simShot(p, o, ang, pow);
+    if (!best || sc > best.sc) best = { ang, pow, sc };
+  }
+  return { ang: best.ang + (Math.random() - .5)*2*cfg.an, pow: Math.max(.1, Math.min(1, best.pow + (Math.random() - .5)*2*cfg.pn)) };
+}
+// drag-to-fling on the arena (touch or mouse)
+let dragS = null;
+const slingHumanTurn = () => game.sling && !game.demo && !game.paused && game.state === 'play' && game.sub === 'aim' && !game.players[game.turn].ai;
+C.addEventListener('pointerdown', e => {
+  ac(); if (!slingHumanTurn()) return;
+  dragS = { id:e.pointerId, sx:e.clientX, sy:e.clientY, p:game.players[game.turn] };
+  try { C.setPointerCapture(e.pointerId); } catch(_){}
+});
+C.addEventListener('pointermove', e => {
+  if (!dragS || e.pointerId !== dragS.id || !slingHumanTurn()) return;
+  const dx = e.clientX - dragS.sx, dy = e.clientY - dragS.sy, l = Math.hypot(dx, dy), p = dragS.p;
+  if (l < 10) { p.pull = 0; return; }
+  p.aim = Math.atan2(-dy, -dx); p.pull = Math.min(1, l / (Math.min(W, H)*.32));
+});
+const dragEnd = e => {
+  if (!dragS || e.pointerId !== dragS.id) return;
+  const p = dragS.p; dragS = null;
+  if (slingHumanTurn() && p.pull > .06) fire(p); else p.pull = 0;
+};
+['pointerup','pointercancel'].forEach(t => C.addEventListener(t, dragEnd));
+function drawSling(){
+  if (!game.sling || game.state !== 'play' || game.sub !== 'aim') return;
+  const p = game.players[game.turn]; if (p.falling >= 0) return;
+  const dx = Math.cos(p.aim), dy = Math.sin(p.aim), px = -dy, py = dx;
+  // guide: expected free-slide distance
+  const len = 50 + launchSpeed(p, Math.max(.06, p.pull)) / SLING_DAMP * .85;
+  for (let d = p.r + 18, k = 0; d < len; d += 26, k++) {
+    const a = 1 - d/len*.7;
+    X.globalAlpha = a; X.fillStyle = '#fff'; X.strokeStyle = '#2b2d42'; X.lineWidth = 3;
+    X.beginPath(); X.arc(p.x + dx*d, p.y + dy*d, 6 - Math.min(3, k*.15), 0, TAU); X.fill(); X.stroke();
+  }
+  X.globalAlpha = 1;
+  // posts and band
+  const ar = p.r*1.3, bx = p.x + p.ox - dx*p.r*.85, by = p.y + p.oy - dy*p.r*.85;
+  for (const s of [-1, 1]) {
+    const qx = p.x + px*ar*s, qy = p.y + py*ar*s;
+    X.lineCap = 'round';
+    X.strokeStyle = '#2b2d42'; X.lineWidth = 10; X.beginPath(); X.moveTo(qx, qy); X.lineTo(bx, by); X.stroke();
+    X.strokeStyle = p.pull > .85 ? '#ff6b6b' : '#a0522d'; X.lineWidth = 5; X.beginPath(); X.moveTo(qx, qy); X.lineTo(bx, by); X.stroke();
+    X.fillStyle = '#c98b4a'; X.strokeStyle = '#2b2d42'; X.lineWidth = 4; X.beginPath(); X.arc(qx, qy, 10, 0, TAU); X.fill(); X.stroke();
+  }
+  // power meter
+  X.strokeStyle = 'rgba(43,45,66,.25)'; X.lineWidth = 8; X.beginPath(); X.arc(p.x, p.y, p.r + 26, 0, TAU); X.stroke();
+  X.strokeStyle = p.pull > .85 ? '#ff6b6b' : '#ffe066'; X.lineWidth = 6;
+  X.beginPath(); X.arc(p.x, p.y, p.r + 26, -Math.PI/2, -Math.PI/2 + TAU*p.pull); X.stroke();
 }
 
 // ---------- update ----------
@@ -473,23 +630,26 @@ function update(dt){
     game.timer -= dt;
     const now = Math.ceil(game.timer);
     if (!game.demo && now !== prev && now > 0) { banner(String(now)); sfx.beep(false); }
-    if (game.timer <= 0) { game.state = 'play'; if (!game.demo) { banner('GO!', null, '#ffe066'); sfx.beep(true); } }
+    if (game.timer <= 0) { game.state = 'play'; if (game.sling) { sfx.beep(true); startTurn(game.turn); } else if (!game.demo) { banner('GO!', null, '#ffe066'); sfx.beep(true); } }
     for (let s = 0; s < 2; s++) { P.forEach(p => updatePlayer(p, dt/2, false)); collide(P[0], P[1]); }
     return;
   }
   if (game.state === 'play') {
-    game.time += dt;
-    if (game.time > 9) game.R = Math.max(MIN_R, game.R - (game.time > 30 ? 9 : 6)*dt);
-    game.nextPU -= dt;
-    if (game.nextPU <= 0 && !game.powerups.length) {
+    if (game.sling) game.R += (game.Rtarget - game.R) * Math.min(1, dt*3);
+    else {
+      game.time += dt;
+      if (game.time > 9) game.R = Math.max(MIN_R, game.R - (game.time > 30 ? 9 : 6)*dt);
+      game.nextPU -= dt;
+    }
+    if (!game.sling && game.nextPU <= 0 && !game.powerups.length) {
       const types = Object.keys(PU), a = Math.random()*TAU, d = Math.sqrt(Math.random())*game.R*.6;
       game.powerups.push({ x:Math.cos(a)*d, y:Math.sin(a)*d, type:types[Math.random()*3|0], life:8, t:0 });
       game.nextPU = 6 + Math.random()*4;
     }
     for (const pu of game.powerups) {
-      pu.life -= dt; pu.t += dt;
+      if (!game.sling) pu.life -= dt; pu.t += dt;
       for (const p of P) if (p.falling < 0 && Math.hypot(p.x-pu.x, p.y-pu.y) < p.r + 24) {
-        p.pu[pu.type] = 7; pu.life = -1; sfx.pick();
+        p.pu[pu.type] = game.sling ? 2 : 7; if (game.sling) p.puNew[pu.type] = true; pu.life = -1; sfx.pick();
         pop(p.x, p.y - p.r - 20, PU[pu.type].label, PU[pu.type].col, 34);
         burst(pu.x, pu.y, 14, PU[pu.type].col, 220, 'star', 9);
         break;
@@ -499,14 +659,23 @@ function update(dt){
     game.powerups = game.powerups.filter(p => p.life > 0);
   }
   if (game.state === 'play' || game.state === 'roundEnd') {
-    if (P[0].ai) aiThink(P[0], P[1], dt);
-    if (P[1].ai) aiThink(P[1], P[0], dt);
+    if (game.sling) { if (game.state === 'play' && game.sub === 'aim') aimControl(P[game.turn], P[1 - game.turn], dt); }
+    else {
+      if (P[0].ai) aiThink(P[0], P[1], dt);
+      if (P[1].ai) aiThink(P[1], P[0], dt);
+    }
     for (let s = 0; s < 2; s++) { P.forEach(p => updatePlayer(p, dt/2, game.state === 'play')); collide(P[0], P[1]); }
   }
   if (game.state === 'play' && P.some(p => p.falling >= 0)) {
-    if (game.pending === null) game.pending = .55;
+    if (game.pending === null) game.pending = game.sling ? .9 : .55;
     game.pending -= dt;
     if (game.pending <= 0) resolveRound();
+  }
+  else if (game.state === 'play' && game.sling && game.sub === 'moving') {
+    game.moveT += dt;
+    const moving = P.some(p => p.vx || p.vy);
+    game.still = moving ? 0 : game.still + dt;
+    if (game.still > .25 || game.moveT > 8) endTurn();
   }
   if (game.state === 'roundEnd') {
     game.timer -= dt;
@@ -606,7 +775,7 @@ function drawIsland(){
   X.restore();
   X.lineWidth = 6; X.strokeStyle = '#2b2d42'; X.beginPath(); X.arc(0, 0, R - 4, 0, TAU); X.stroke();
   // edge dashes
-  const shrinking = game.state === 'play' && game.time > 9 && R > MIN_R;
+  const shrinking = game.state === 'play' && (game.sling ? game.Rtarget > MIN_R && game.turnCount % 2 === 1 : game.time > 9 && R > MIN_R);
   const pulse = shrinking ? (Math.sin(t*10)*.5 + .5) : 0;
   X.setLineDash([18, 16]); X.lineDashOffset = -t*30;
   X.strokeStyle = shrinking ? `rgba(255,${120 - pulse*80},${80 - pulse*60},.9)` : 'rgba(255,255,255,.75)';
@@ -637,7 +806,7 @@ function drawPlayer(p){
   // trail
   for (const s of p.trail) { X.globalAlpha = s.life/.18*.35; X.fillStyle = c.main; X.beginPath(); X.arc(s.x, s.y, s.r*.9, 0, TAU); X.fill(); }
   X.globalAlpha = 1;
-  X.save(); X.translate(p.x, p.y);
+  X.save(); X.translate(p.x + (p.ox || 0), p.y + (p.oy || 0));
   if (p.falling < 0) {
     X.fillStyle = 'rgba(0,0,0,.18)'; X.beginPath(); X.ellipse(0, r*.62, r*.95, r*.38, 0, 0, TAU); X.fill();
     // dash-ready ring
@@ -689,6 +858,11 @@ function drawPlayer(p){
     const ty = p.y - p.r - 30;
     X.fillStyle = c.main; X.strokeStyle = '#2b2d42'; X.lineWidth = 3; rr(p.x - w/2, ty - 12, w, 24, 10); X.fill(); X.stroke();
     X.fillStyle = '#fff'; X.textAlign = 'center'; X.textBaseline = 'middle'; X.fillText(lbl, p.x, ty + 1);
+    if (game.sling && game.state === 'play' && game.sub === 'aim' && game.turn === p.i) {
+      const ay = ty - 26 - Math.abs(Math.sin(game.t*6))*8;
+      X.fillStyle = c.main; X.strokeStyle = '#2b2d42'; X.lineWidth = 3;
+      X.beginPath(); X.moveTo(p.x - 11, ay - 8); X.lineTo(p.x + 11, ay - 8); X.lineTo(p.x, ay + 6); X.closePath(); X.fill(); X.stroke();
+    }
   }
 }
 function star(x, y, r, col){
@@ -747,7 +921,7 @@ function drawHUD(){
     X.globalAlpha = k > 1.1 ? (1.4 - k)/.3 : 1;
     X.save(); X.translate(view.cx, view.cy); X.scale(s, s); X.rotate(Math.sin(k*8)*.04);
     X.textAlign = 'center'; X.textBaseline = 'middle';
-    const size = Math.min(96, area.w/(b.txt.length*.62 + .5));
+    const size = Math.min(96, area.w/(b.txt.length*.78 + .8));
     outlinedText(b.txt, 0, 0, size, b.col);
     if (b.sub) outlinedText(b.sub, 0, size*.75, size*.38, '#fff');
     X.restore(); X.globalAlpha = 1;
@@ -761,13 +935,14 @@ function render(){
   X.setTransform(DPR*s, 0, 0, DPR*s, DPR*(view.cx + ox), DPR*(view.cy + oy));
   drawIsland();
   game.powerups.forEach(drawPowerup);
+  drawSling();
   const sorted = [...game.players].sort((a, b) => (b.falling >= 0) - (a.falling >= 0) || a.y - b.y);
   sorted.forEach(drawPlayer);
   drawParts();
   X.setTransform(DPR, 0, 0, DPR, 0, 0);
   drawHUD();
   // pad cooldown dots
-  if (isTouch && !game.demo) game.players.forEach((p, i) => pads[i].querySelector('.dot').classList.toggle('cd', p.cd > 0 || p.falling >= 0));
+  if (isTouch && !game.demo) game.players.forEach((p, i) => { pads[i].querySelector('.dot').classList.toggle('cd', p.cd > 0 || p.falling >= 0); pads[i].style.opacity = game.sling && (game.turn !== i || game.sub !== 'aim') ? .35 : 1; });
 }
 
 // ---------- menu / UI ----------
@@ -791,10 +966,17 @@ $('#btnMute').onclick = () => { muted = !muted; $('#btnMute').style.opacity = mu
 function togglePause(){ if (game.demo) return; game.paused = !game.paused; $('#pause').classList.toggle('hidden', !game.paused); }
 document.addEventListener('visibilitychange', () => { if (document.hidden && !game.demo && !game.paused && game.state !== 'over') togglePause(); });
 
+seg('#mode', v => { game.slingSel = !!v; renderHelp(); });
 const pu = c => `<span class="pu" style="background:${c}"></span>`;
-$('#help').innerHTML = isTouch
+function renderHelp(){
+$('#help').innerHTML = game.slingSel ? (isTouch
+  ? `<b>Take turns</b> flinging your blob!<br><b>Drag back</b> anywhere and let go, or use the pad: <b>◀ ▶</b> aim, <b>hold ▼</b> to pull, let go to fling.<br>Knock your rival off, but don't fly off yourself!<br>${pu(PU.big.col)} Big &nbsp;${pu(PU.turbo.col)} Turbo &nbsp;${pu(PU.boing.col)} Boing · island shrinks every round of turns`
+  : `<b>Take turns</b> flinging your blob!<br><span class="r">P1</span>: <b>A</b>/<b>D</b> aim, <b>hold S</b> to pull, release to fling, <b>W</b> eases off<br><span class="bl">P2</span>: same with <b>←</b> <b>→</b> <b>↓</b> <b>↑</b> · or <b>drag back</b> with the mouse<br>${pu(PU.big.col)} Big &nbsp;${pu(PU.turbo.col)} Turbo &nbsp;${pu(PU.boing.col)} Boing · island shrinks every round of turns`)
+  : isTouch
   ? `Slide your thumb on your <b>pad</b> to move.<br><b>Double-tap</b> the pad to <b>DASH</b> into your rival!<br>2 players: lay the phone flat between you.<br>${pu(PU.big.col)} Big &nbsp;${pu(PU.turbo.col)} Turbo &nbsp;${pu(PU.boing.col)} Boing · the island shrinks!`
   : `<span class="r">P1</span>: <b>W</b> <b>A</b> <b>S</b> <b>D</b> &nbsp; <span class="bl">P2</span>: <b>↑</b> <b>←</b> <b>↓</b> <b>→</b><br><b>Double-tap</b> a direction to <b>DASH</b>!<br>Solo? Either set of keys works.<br>${pu(PU.big.col)} Big &nbsp;${pu(PU.turbo.col)} Turbo &nbsp;${pu(PU.boing.col)} Boing · the island shrinks! · <b>P</b> pause`;
+}
+renderHelp();
 
 // ---------- loop ----------
 let last = performance.now();
