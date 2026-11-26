@@ -43,6 +43,7 @@
   .seg button{border:0;background:transparent;font-weight:800;font-size:15px;padding:7px 12px;border-left:3px solid var(--ink)}
   .seg button:first-child{border-left:0}
   .seg button.on{background:var(--sun)}
+  .seg.wide{width:100%;margin:2px 0 10px} .seg.wide button{flex:1;padding:9px 2px}
   @media (max-width:430px){ .seg button{padding:7px 8px;font-size:14px} .opt{font-size:15px} }
   .help{margin-top:12px;padding:10px 12px;background:#eaf8ff;border:3px dashed #9fd8f5;border-radius:16px;font-size:14px;
     font-weight:700;line-height:1.45;text-align:left}
@@ -87,9 +88,10 @@
       <button class="big b1" id="play1">1 Player<small>vs CPU</small></button>
       <button class="big b2" id="play2">2 Players<small>same device</small></button>
     </div>
-    <div class="opt"><span>Mode</span><div class="seg" id="mode"><button data-v="0" class="on">Real-time</button><button data-v="1">Slingshot</button><button data-v="2">Football</button></div></div>
+    <div class="seg wide" id="mode"><button data-v="0" class="on">Real-time</button><button data-v="1">Slingshot</button><button data-v="2">Football</button><button data-v="3">Race</button></div>
     <div class="opt"><span>CPU level</span><div class="seg" id="diff"><button data-v="0">Easy</button><button data-v="1" class="on">Normal</button><button data-v="2">Hard</button></div></div>
-    <div class="opt"><span>First to</span><div class="seg" id="tgt"><button data-v="3" class="on">3</button><button data-v="5">5</button><button data-v="7">7</button></div></div>
+    <div class="opt" id="lapsRow" style="display:none"><span>Laps</span><div class="seg" id="laps"><button data-v="1" class="on">1</button><button data-v="2">2</button><button data-v="3">3</button></div></div>
+    <div class="opt" id="tgtRow"><span>First to</span><div class="seg" id="tgt"><button data-v="3" class="on">3</button><button data-v="5">5</button><button data-v="7">7</button></div></div>
     <div class="help" id="help"></div>
   </div>
 </div>
@@ -148,7 +150,7 @@ let area = { x:0, y:0, w:0, h:0 };
 const game = {
   state:'countdown', demo:true, mode:1, diff:1, target:3, score:[0,0],
   R:BASE_R, time:0, timer:0, pending:null, t:0,
-  sling:false, slingSel:false, fb:false, modeSel:0, sub:'', turn:0, roundNo:0, Rtarget:BASE_R, still:0, moveT:0, turnCount:0,
+  sling:false, slingSel:false, fb:false, race:false, laps:1, modeSel:0, sub:'', turn:0, roundNo:0, Rtarget:BASE_R, still:0, moveT:0, turnCount:0,
   players:[], powerups:[], parts:[], texts:[], shake:0, banner:null, nextPU:5, paused:false
 };
 
@@ -298,12 +300,12 @@ function layout(){
   area = { x:ax, y:ay, w:aw, h:ah };
   view.s = Math.min(aw, ah) / (2*(BASE_R + (isTouch ? 20 : 34)));
   view.cx = ax + aw/2; view.cy = ay + ah/2;
-  if (game.fb && !game.demo) {           // football: the pitch takes the whole screen
+  if ((game.fb || game.race) && !game.demo) {   // football / race: the field takes the whole screen
     pads.forEach(p => p.style.display = 'none');
     fb.vertical = portrait;
     const tp = portrait ? 48 : 54, bt = portrait ? 48 : 6;
     area = { x:0, y:tp, w:W, h:H - tp - bt };
-    const lng = FB.PL + 2*FB.GD + 80, sht = FB.PW + 80;
+    const lng = game.race ? RC.W + 50 : FB.PL + 2*FB.GD + 80, sht = game.race ? RC.H + 50 : FB.PW + 80;
     view.s = portrait ? Math.min(area.h/lng, area.w/sht) : Math.min(area.w/lng, area.h/sht);
     view.cx = W/2; view.cy = area.y + area.h/2;
     Object.assign(ctrl.style, { left:'50%', right:'auto', top:'6px', flexDirection:'row', transform:'translateX(-50%)' });
@@ -337,17 +339,17 @@ function startRound(){
   if (!game.demo) { banner('3'); sfx.beep(false); }
 }
 function startMatch(mode){
-  game.demo = false; game.mode = mode; game.score = [0,0]; game.paused = false; game.fb = game.modeSel === 2; game.sling = game.slingSel && !game.fb; game.roundNo = 0;
+  game.demo = false; game.mode = mode; game.score = [0,0]; game.paused = false; game.fb = game.modeSel === 2; game.race = game.modeSel === 3; game.sling = game.slingSel && !game.fb; game.roundNo = 0;
   pads.forEach((el, i) => el.querySelector('.hint').textContent = 'P' + (i+1) + (game.sling ? ' · ←→ aim · hold ↓, let go' : ' · double-tap = DASH'));
   game.players = [makePlayer(0, false), makePlayer(1, mode === 1)];
   game.parts = []; game.texts = [];
   $('#menu').classList.add('hidden'); $('#over').classList.add('hidden'); $('#pause').classList.add('hidden');
   held.forEach(h => h.u = h.d = h.l = h.r = 0);
-  if (game.fb) { const el = document.documentElement; if (el.requestFullscreen && !document.fullscreenElement) el.requestFullscreen().catch(() => {}); }
-  layout(); if (game.fb) fbInit(); else startRound();
+  if (game.fb || game.race) { const el = document.documentElement; if (el.requestFullscreen && !document.fullscreenElement) el.requestFullscreen().catch(() => {}); }
+  layout(); if (game.fb) fbInit(); else if (game.race) rcInit(); else startRound();
 }
 function startDemo(){
-  game.demo = true; game.mode = 2; game.paused = false; game.sling = false; game.fb = false;
+  game.demo = true; game.mode = 2; game.paused = false; game.sling = false; game.fb = false; game.race = false;
   game.players = [makePlayer(0, true), makePlayer(1, true)];
   $('#menu').classList.remove('hidden'); $('#over').classList.add('hidden'); $('#pause').classList.add('hidden');
   layout(); startRound();
@@ -717,7 +719,7 @@ function matchOver(w){
   t.textContent = (w === 0 && game.mode === 1) ? 'YOU WIN!' : (w === 1 && game.mode === 1) ? 'CPU WINS!' : nameOf(w) + ' WINS!';
   t.style.color = COL[w].main;
   t.style.webkitTextStroke = '3px #2b2d42'; t.style.paintOrder = 'stroke fill'; t.style.textShadow = '0 4px 0 #2b2d42';
-  $('#overSub').textContent = 'Final score ' + game.score[0] + ' – ' + game.score[1] + (game.mode === 1 && w === 1 ? ' · try again!' : game.fb ? ' · what a match!' : ' · splendid splashing!');
+  $('#overSub').textContent = game.race ? (game.laps + (game.laps > 1 ? ' laps' : ' lap') + ' · ' + (game.mode === 1 && w === 1 ? 'try again!' : 'checkered flag!')) : 'Final score ' + game.score[0] + ' – ' + game.score[1] + (game.mode === 1 && w === 1 ? ' · try again!' : game.fb ? ' · what a match!' : ' · splendid splashing!');
   setTimeout(() => { if (game.state === 'over') $('#over').classList.remove('hidden'); }, 700);
   layout();
 }
@@ -866,7 +868,7 @@ function drawPlayer(p){
     for (let k = 0; k < 3; k++) { const a = game.t*7 + k*TAU/3; star(p.x + Math.cos(a)*r*.7, p.y - r - 8 + Math.sin(a)*6, 7, '#ffe066'); }
   }
   // name tag
-  if (p.falling < 0 && !game.demo && !game.fb) {
+  if (p.falling < 0 && !game.demo && !game.fb && !game.race) {
     const lbl = nameOf(p.i); X.font = `900 18px ${FONT}`; const w = X.measureText(lbl).width + 14;
     const ty = p.y - p.r - 30;
     X.fillStyle = c.main; X.strokeStyle = '#2b2d42'; X.lineWidth = 3; rr(p.x - w/2, ty - 12, w, 24, 10); X.fill(); X.stroke();
@@ -902,6 +904,7 @@ function drawParts(){
   X.globalAlpha = 1;
 }
 function drawScoreBlock(i, alignRight){
+  if (game.race) return drawRaceBlock(i, alignRight);
   const name = nameOf(i), c = COL[i], n = game.target;
   X.font = `900 20px ${FONT}`;
   const nw = X.measureText(name).width + 18, pip = 13, gap = 6, w = nw + 10 + n*(pip*2 + gap) + 8, h = 38;
@@ -922,8 +925,8 @@ function drawHUD(){
   if (game.demo) return;
   const two = game.mode === 2, hs = W < 520 ? .75 : 1;
   if (isTouch && portrait && two) {
-    X.save(); X.translate(10, game.fb ? H - 6 - 38*hs : area.y + area.h - 34*hs); X.scale(hs, hs); drawScoreBlock(0, false); X.restore();
-    X.save(); X.translate(W - 10, game.fb ? 6 + 38*hs : area.y + 34*hs); X.rotate(Math.PI); X.scale(hs, hs); drawScoreBlock(1, false); X.restore();
+    X.save(); X.translate(10, game.fb || game.race ? H - 6 - 38*hs : area.y + area.h - 34*hs); X.scale(hs, hs); drawScoreBlock(0, false); X.restore();
+    X.save(); X.translate(W - 10, game.fb || game.race ? 6 + 38*hs : area.y + 34*hs); X.rotate(Math.PI); X.scale(hs, hs); drawScoreBlock(1, false); X.restore();
   } else {
     X.save(); X.translate(10, 10); X.scale(hs, hs); drawScoreBlock(0, false); X.restore();
     X.save(); X.translate(W - 10, 10); X.scale(hs, hs); drawScoreBlock(1, true); X.restore();
@@ -1302,6 +1305,335 @@ function fbRender(){
   drawHUD();
 }
 
+// ---------- race mode (turn-based slingshot around a track) ----------
+// Canonical world: RC.W x RC.H, centred on 0. Shown rotated on portrait screens (shares fb.vertical / fbRot).
+const RC = { W:1400, H:860, TW:72, R:28, MAX:1000, DD:1.7, GD:3.6, SP:20 };
+const RC_AI = [ { n:12, an:.12, pn:.2 }, { n:40, an:.04, pn:.07 }, { n:110, an:.012, pn:.025 } ];
+const RC_CTRL = [[-520,-300],[0,-330],[500,-300],[610,-40],[480,260],[160,300],[0,110],[-160,300],[-510,280],[-610,0]];
+const rc = { pts:[], tan:[], N:0, trees:[], racers:[], turn:0, sub:'aim', aim:0, aim0:0, pull:0, wasDown:true, plan:null,
+             aiT:0, still:0, moveT:0, timer:0, goal:0, drag:null, winner:0, firstNext:0 };
+(function buildTrack(){
+  const C = RC_CTRL, n = C.length, dense = [];
+  for (let i = 0; i < n; i++) {
+    const p0 = C[(i - 1 + n) % n], p1 = C[i], p2 = C[(i + 1) % n], p3 = C[(i + 2) % n];
+    for (let k = 0; k < 60; k++) {
+      const t = k/60, t2 = t*t, t3 = t2*t;
+      dense.push([0, 1].map(j => .5*(2*p1[j] + (-p0[j] + p2[j])*t + (2*p0[j] - 5*p1[j] + 4*p2[j] - p3[j])*t2 + (-p0[j] + 3*p1[j] - 3*p2[j] + p3[j])*t3)));
+    }
+  }
+  // resample by arc length
+  const pts = [dense[0]]; let acc = 0;
+  for (let i = 1; i <= dense.length; i++) {
+    const a = dense[i - 1], b = dense[i % dense.length], d = Math.hypot(b[0] - a[0], b[1] - a[1]);
+    acc += d;
+    while (acc >= RC.SP) { acc -= RC.SP; const k = 1 - acc/d; pts.push([a[0] + (b[0] - a[0])*k, a[1] + (b[1] - a[1])*k]); }
+  }
+  if (Math.hypot(pts[pts.length-1][0] - pts[0][0], pts[pts.length-1][1] - pts[0][1]) < RC.SP*.5) pts.pop();
+  rc.pts = pts; rc.N = pts.length;
+  rc.tan = pts.map((p, i) => { const q = pts[(i + 1) % pts.length], o = pts[(i - 1 + pts.length) % pts.length], l = Math.hypot(q[0] - o[0], q[1] - o[1]); return [(q[0] - o[0])/l, (q[1] - o[1])/l]; });
+  let seed = 11; const rnd = () => (seed = (seed*16807) % 2147483647)/2147483647;
+  for (let k = 0; k < 400 && rc.trees.length < 46; k++) {
+    const x = (rnd() - .5)*(RC.W - 60), y = (rnd() - .5)*(RC.H - 60);
+    if (pts.every(p => Math.hypot(p[0] - x, p[1] - y) > RC.TW + 48) && rc.trees.every(t => Math.hypot(t.x - x, t.y - y) > 60))
+      rc.trees.push({ x, y, s:.8 + rnd()*.6, k:rnd() < .25 ? 'bush' : 'tree' });
+  }
+})();
+function rcSegDist(x, y, i){
+  const a = rc.pts[i], b = rc.pts[(i + 1) % rc.N], dx = b[0] - a[0], dy = b[1] - a[1];
+  const t = Math.max(0, Math.min(1, ((x - a[0])*dx + (y - a[1])*dy)/(dx*dx + dy*dy)));
+  return Math.hypot(x - a[0] - dx*t, y - a[1] - dy*t);
+}
+// follow a body along the track continuously; leaving and re-joining somewhere far away counts as off-track
+function rcTrack(b){
+  const N = rc.N, win = b.off ? 10 : 4;
+  let best = 1e9, bi = b.seg;
+  for (let k = -win; k <= win; k++) { const i = (b.seg + k + N) % N, d = rcSegDist(b.x, b.y, i); if (d < best) { best = d; bi = i; } }
+  if (best <= RC.TW) {
+    let delta = bi - b.seg; if (delta > N/2) delta -= N; if (delta < -N/2) delta += N;
+    b.prog += delta; b.seg = bi; b.off = false;
+  } else b.off = true;
+}
+function rcStep(B, dt, quiet){
+  for (const b of B) {
+    const f = Math.exp(-(b.off ? RC.GD : RC.DD)*dt); b.vx *= f; b.vy *= f;
+    if (b.vx*b.vx + b.vy*b.vy < 36) { b.vx = 0; b.vy = 0; }
+    b.x += b.vx*dt; b.y += b.vy*dt;
+    const hx = RC.W/2 - b.r, hy = RC.H/2 - b.r;
+    if (Math.abs(b.x) > hx) { b.x = Math.sign(b.x)*hx; b.vx = -b.vx*.6; }
+    if (Math.abs(b.y) > hy) { b.y = Math.sign(b.y)*hy; b.vy = -b.vy*.6; }
+    rcTrack(b);
+  }
+  fbCollide(B[0], B[1], quiet);
+}
+const rcLap = prog => Math.max(1, Math.min(game.laps, Math.floor(prog/rc.N) + 1));
+const rcAhead = (b, k) => rc.pts[(b.seg + k) % rc.N];
+
+function rcInit(){
+  game.state = 'play'; game.parts = []; game.texts = [];
+  rc.goal = game.laps*rc.N;
+  const s0 = rc.N - 4, [cx, cy] = rc.pts[s0], [tx, ty] = rc.tan[s0], nx = -ty, ny = tx;
+  rc.racers = [0, 1].map(t => {
+    const o = (t ? -1 : 1)*RC.TW*.45, b = fbBody(t, cx + nx*o, cy + ny*o);
+    Object.assign(b, { r:RC.R, seg:s0, prog:-4, off:false, fx:tx, fy:ty });
+    b.last = { x:b.x, y:b.y, seg:s0, prog:-4 };
+    return b;
+  });
+  game.players = rc.racers;
+  const first = rc.firstNext; rc.firstNext = 1 - rc.firstNext;
+  rcStartTurn(first);
+  banner(game.laps + (game.laps > 1 ? ' LAPS' : ' LAP') + ' · GO!', turnName(first), '#ffe066');
+}
+function rcStartTurn(team){
+  Object.assign(rc, { turn:team, sub:'aim', still:0, moveT:0, pull:0, wasDown:true, plan:null, aiT:0, drag:null });
+  const me = rc.racers[team], [ax, ay] = rcAhead(me, 12);
+  rc.aim = rc.aim0 = Math.atan2(ay - me.y, ax - me.x);
+  banner(turnName(team), null, COL[team].main);
+}
+function rcFire(){
+  const d = rc.racers[rc.turn], sp = RC.MAX*Math.max(.06, rc.pull);
+  d.vx = Math.cos(rc.aim)*sp; d.vy = Math.sin(rc.aim)*sp; d.fx = Math.cos(rc.aim); d.fy = Math.sin(rc.aim);
+  d.ox = d.oy = 0; rc.pull = 0; rc.sub = 'moving'; rc.moveT = 0; rc.still = 0;
+  sfx.dash(); buzz(15);
+  const [px, py] = fbRot(d.x - d.fx*d.r, d.y - d.fy*d.r);
+  burst(px, py, 8, '#fff7e0', 180, 'dot', 9);
+}
+// AI: simulate candidate flings, keep the one that gains the most track without leaving it
+function rcSim(team, ang, pow){
+  const B = rc.racers.map(b => ({ ...b, trail:[] })), me = B[team], op = B[1 - team];
+  const sp = RC.MAX*pow; me.vx = Math.cos(ang)*sp; me.vy = Math.sin(ang)*sp;
+  for (let s = 0; s < 1400; s++) { rcStep(B, 1/180, true); if (s % 6 === 0 && !me.vx && !me.vy && !op.vx && !op.vy) break; }
+  if (!me.off && me.prog >= rc.goal) return 1e5 - me.prog;
+  const my = me.off ? me.last.prog : me.prog, theirs = op.off ? op.last.prog : op.prog;
+  let sc = (my - rc.racers[team].prog)*RC.SP - (theirs - rc.racers[1 - team].prog)*RC.SP*.5;
+  if (me.off) sc -= 80; else sc -= rcSegDist(me.x, me.y, me.seg)*.7;
+  return sc;
+}
+function rcPlan(team){
+  const cfg = RC_AI[game.diff], me = rc.racers[team];
+  let best = null;
+  for (let k = 0; k < cfg.n; k++) {
+    let ang;
+    if (Math.random() < .8) { const [ax, ay] = rcAhead(me, 4 + Math.floor(Math.random()*28)); ang = Math.atan2(ay - me.y, ax - me.x) + (Math.random() - .5)*.25; }
+    else ang = Math.atan2(rc.tan[me.seg][1], rc.tan[me.seg][0]) + (Math.random() - .5)*1.6;
+    const pow = .15 + Math.random()*.85, sc = rcSim(team, ang, pow);
+    if (!best || sc > best.sc) best = { ang, pow, sc };
+  }
+  return { ang: best.ang + (Math.random() - .5)*2*cfg.an, pow: Math.max(.08, Math.min(1, best.pow + (Math.random() - .5)*2*cfg.pn)) };
+}
+function rcStopped(){
+  let resets = 0;
+  for (const r of rc.racers) {
+    if (r.off) {
+      resets++; r.rs = { x:r.x, y:r.y }; r.vx = r.vy = 0;
+      const [px, py] = fbRot(r.x, r.y);
+      pop(px, py - 30, 'OFF TRACK!', '#fff', 30); burst(px, py, 12, '#e6f4d0', 180, 'dot', 10);
+    } else {
+      const before = rcLap(r.last.prog);
+      r.last = { x:r.x, y:r.y, seg:r.seg, prog:r.prog };
+      if (r.prog < rc.goal && rcLap(r.prog) > before) { banner('LAP ' + rcLap(r.prog) + '/' + game.laps, nameOf(r.i), COL[r.i].main); sfx.point(); }
+    }
+  }
+  if (resets) { rc.sub = 'reset'; rc.timer = .7; tone(500, 140, .35, 'sawtooth', .07); }
+  else rcAfterStop();
+}
+function rcAfterStop(){
+  const [a, b] = rc.racers;
+  for (let k = 0; k < 12; k++) {                       // un-overlap after a reset
+    const dx = b.x - a.x, dy = b.y - a.y, d = Math.hypot(dx, dy) || 1, ov = a.r + b.r + 2 - d;
+    if (ov <= 0) break;
+    const mover = a.rs ? a : b, s = mover === a ? -1 : 1;
+    mover.x += s*dx/d*ov; mover.y += s*dy/d*ov; rcTrack(mover); mover.last = { x:mover.x, y:mover.y, seg:mover.seg, prog:mover.prog };
+  }
+  rc.racers.forEach(r => r.rs = null);
+  const fin = rc.racers.filter(r => !r.off && r.prog >= rc.goal);
+  if (fin.length) {
+    const w = fin.sort((p, q) => q.prog - p.prog)[0].i;
+    rc.winner = w; rc.sub = 'done'; rc.timer = 1.8; game.score[w] = 1; game.score[1 - w] = 0;
+    banner('FINISH!', nameOf(w) + ' WINS', COL[w].main); sfx.point();
+    const [px, py] = fbRot(rc.racers[w].x, rc.racers[w].y);
+    burst(px, py, 30, '#ffe066', 420, 'star', 12);
+  } else rcStartTurn(1 - rc.turn);
+}
+function rcUpdate(dt){
+  game.t += dt; updateFX(dt);
+  for (const d of rc.racers) { d.blink -= dt; if (d.blink < -.12) d.blink = 2 + Math.random()*3; d.hit = Math.max(0, d.hit - dt); }
+  if (game.paused || game.state === 'over') return;
+  const team = rc.turn, me = rc.racers[team];
+  if (rc.sub === 'aim') {
+    if (fbIsAI(team)) {
+      rc.aiT += dt;
+      if (!rc.plan && rc.aiT > .35) { rc.plan = rcPlan(team); rc.aiT = .35; }
+      if (rc.plan) {
+        const k = Math.min(1, (rc.aiT - .35)/.7), e = k*k*(3 - 2*k);
+        let dd = rc.plan.ang - rc.aim0; dd = Math.atan2(Math.sin(dd), Math.cos(dd));
+        rc.aim = rc.aim0 + dd*e;
+        if (rc.aiT > .9) rc.pull = Math.min(rc.plan.pow, rc.pull + dt*1.3);
+        if (rc.aiT > 1.45 && rc.pull >= rc.plan.pow - 1e-6) rcFire();
+      }
+    } else if (!rc.drag) {
+      const inp = slingInput(team);
+      rc.rotHold = inp.rot ? (rc.rotHold || 0) + dt : 0;
+      rc.aim += inp.rot*(.7 + Math.min(1, rc.rotHold)*1.8)*dt;
+      if (inp.down) rc.pull = Math.min(1, rc.pull + dt*.85);
+      if (inp.up) rc.pull = Math.max(0, rc.pull - dt*2);
+      if (!inp.down && rc.wasDown && rc.pull > .06) { rc.wasDown = false; rcFire(); }
+      else rc.wasDown = inp.down;
+    }
+    if (rc.sub === 'aim') { me.ox = -Math.cos(rc.aim)*rc.pull*30; me.oy = -Math.sin(rc.aim)*rc.pull*30; }
+    return;
+  }
+  if (rc.sub === 'moving') {
+    for (let k = 0; k < 4; k++) rcStep(rc.racers, dt/4, false);
+    for (const d of rc.racers) if (d.vx*d.vx + d.vy*d.vy > 420*420) d.trail.push({ x:d.x, y:d.y, r:d.r, life:.18 });
+    rc.moveT += dt;
+    rc.still = rc.racers.some(b => b.vx || b.vy) ? 0 : rc.still + dt;
+    if (rc.still > .25 || rc.moveT > 10) { rc.racers.forEach(b => { b.vx = b.vy = 0; }); rcStopped(); }
+  } else if (rc.sub === 'reset') {
+    rc.timer -= dt;
+    const k = 1 - Math.max(0, rc.timer)/.7, e = k*k*(3 - 2*k);
+    for (const r of rc.racers) if (r.rs) { r.x = r.rs.x + (r.last.x - r.rs.x)*e; r.y = r.rs.y + (r.last.y - r.rs.y)*e; }
+    if (rc.timer <= 0) {
+      for (const r of rc.racers) if (r.rs) { Object.assign(r, { x:r.last.x, y:r.last.y, seg:r.last.seg, prog:r.last.prog, off:false, trail:[] }); }
+      rcAfterStop();
+    }
+  } else if (rc.sub === 'done') {
+    rc.timer -= dt;
+    if (rc.timer <= 0) matchOver(rc.winner);
+  }
+}
+// touch / mouse: drag back anywhere, let go
+const rcHumanTurn = () => game.race && !game.demo && !game.paused && game.state === 'play' && rc.sub === 'aim' && !fbIsAI(rc.turn);
+C.addEventListener('pointerdown', e => {
+  if (!rcHumanTurn()) return;
+  rc.drag = { id:e.pointerId, sx:e.clientX, sy:e.clientY };
+  try { C.setPointerCapture(e.pointerId); } catch(_){}
+});
+C.addEventListener('pointermove', e => {
+  if (!rc.drag || e.pointerId !== rc.drag.id || !rcHumanTurn()) return;
+  const dx = e.clientX - rc.drag.sx, dy = e.clientY - rc.drag.sy, l = Math.hypot(dx, dy);
+  if (l < 10) { rc.pull = 0; return; }
+  const [vx, vy] = fb.vertical ? [-dy, dx] : [dx, dy];
+  rc.aim = Math.atan2(-vy, -vx); rc.pull = Math.min(1, l/(Math.min(W, H)*.3));
+});
+const rcDragEnd = e => {
+  if (!rc.drag || e.pointerId !== rc.drag.id) return;
+  rc.drag = null;
+  if (rcHumanTurn() && rc.pull > .06) rcFire(); else rc.pull = 0;
+};
+['pointerup','pointercancel'].forEach(t => C.addEventListener(t, rcDragEnd));
+
+// drawing
+function rcTrackPath(){ X.beginPath(); rc.pts.forEach((p, i) => i ? X.lineTo(p[0], p[1]) : X.moveTo(p[0], p[1])); X.closePath(); }
+function rcDrawWorld(){
+  const hw = RC.W/2, hh = RC.H/2, TW = RC.TW;
+  X.fillStyle = 'rgba(0,0,0,.15)'; rr(-hw - 20, -hh - 12, RC.W + 40, RC.H + 40, 36); X.fill();
+  X.fillStyle = '#8bdc68'; X.strokeStyle = '#2b2d42'; X.lineWidth = 6; rr(-hw - 20, -hh - 20, RC.W + 40, RC.H + 40, 36); X.fill(); X.stroke();
+  X.lineJoin = 'round'; X.lineCap = 'round';
+  X.save(); X.translate(0, 9); rcTrackPath(); X.strokeStyle = 'rgba(0,0,0,.16)'; X.lineWidth = 2*TW + 26; X.stroke(); X.restore();
+  rcTrackPath(); X.strokeStyle = '#2b2d42'; X.lineWidth = 2*TW + 24; X.stroke();
+  X.strokeStyle = '#ff6b6b'; X.lineWidth = 2*TW + 16; X.stroke();
+  X.setLineDash([22, 22]); X.lineCap = 'butt'; X.strokeStyle = '#fff'; X.stroke(); X.setLineDash([]);
+  X.strokeStyle = '#6b6f86'; X.lineWidth = 2*TW; X.stroke();
+  X.setLineDash([26, 24]); X.strokeStyle = 'rgba(255,255,255,.55)'; X.lineWidth = 4; X.stroke(); X.setLineDash([]);
+  // direction chevrons
+  X.strokeStyle = 'rgba(255,255,255,.3)'; X.lineWidth = 7; X.lineCap = 'round';
+  for (let i = 8; i < rc.N - 4; i += 16) {
+    const [x, y] = rc.pts[i], [tx, ty] = rc.tan[i];
+    for (const o of [-.45, .45]) {
+      const cx = x - ty*TW*o, cy = y + tx*TW*o;
+      X.beginPath(); X.moveTo(cx - tx*10 - ty*12, cy - ty*10 + tx*12); X.lineTo(cx + tx*6, cy + ty*6); X.lineTo(cx - tx*10 + ty*12, cy - ty*10 - tx*12); X.stroke();
+    }
+  }
+  // start / finish
+  { const [x, y] = rc.pts[0], [tx, ty] = rc.tan[0], nx = -ty, ny = tx, sq = TW*2/8;
+    for (let a = 0; a < 8; a++) for (let b = 0; b < 2; b++) {
+      X.fillStyle = (a + b) % 2 ? '#2b2d42' : '#fff';
+      const ox = -TW + a*sq, oy = (b - 1)*sq;
+      X.beginPath();
+      const P = (u, v) => [x + nx*u + tx*v, y + ny*u + ty*v];
+      [[ox, oy], [ox + sq, oy], [ox + sq, oy + sq], [ox, oy + sq]].forEach(([u, v], k) => { const [px, py] = P(u, v); k ? X.lineTo(px, py) : X.moveTo(px, py); });
+      X.closePath(); X.fill();
+    }
+  }
+  for (const t of rc.trees) {
+    const r = 22*t.s;
+    X.fillStyle = 'rgba(0,0,0,.15)'; X.beginPath(); X.ellipse(t.x + 4, t.y + 8, r, r*.8, 0, 0, TAU); X.fill();
+    X.fillStyle = t.k === 'tree' ? '#3d9a4b' : '#5cb85c'; X.strokeStyle = '#2b2d42'; X.lineWidth = 4;
+    X.beginPath(); X.arc(t.x, t.y, r, 0, TAU); X.fill(); X.stroke();
+    X.fillStyle = 'rgba(255,255,255,.25)'; X.beginPath(); X.arc(t.x - r*.3, t.y - r*.3, r*.35, 0, TAU); X.fill();
+  }
+}
+function rcDrawMarks(){
+  // little flag at each racer's last stop (where an off-track stop sends you back to)
+  for (const r of rc.racers) {
+    if (Math.hypot(r.x - r.last.x, r.y - r.last.y) < 4) continue;
+    const [x, y] = fbRot(r.last.x, r.last.y);
+    X.globalAlpha = .7; X.strokeStyle = '#2b2d42'; X.lineWidth = 3;
+    X.beginPath(); X.moveTo(x, y); X.lineTo(x, y - 34); X.stroke();
+    X.fillStyle = COL[r.i].main; X.beginPath(); X.moveTo(x, y - 34); X.lineTo(x + 20, y - 27); X.lineTo(x, y - 20); X.closePath(); X.fill(); X.stroke();
+    X.fillStyle = 'rgba(0,0,0,.2)'; X.beginPath(); X.ellipse(x, y, 9, 4, 0, 0, TAU); X.fill();
+    X.globalAlpha = 1;
+  }
+}
+function rcDrawAim(){
+  if (game.state !== 'play' || rc.sub !== 'aim') return;
+  const d = rc.racers[rc.turn], [px, py] = fbRot(d.x, d.y), a = rc.aim + fbRotOff(), dx = Math.cos(a), dy = Math.sin(a);
+  const len = 50 + RC.MAX*Math.max(.06, rc.pull)/RC.DD*.85;
+  for (let s = d.r + 18, k = 0; s < len; s += 26, k++) {
+    X.globalAlpha = 1 - s/len*.7; X.fillStyle = '#fff'; X.strokeStyle = '#2b2d42'; X.lineWidth = 3;
+    X.beginPath(); X.arc(px + dx*s, py + dy*s, 6 - Math.min(3, k*.15), 0, TAU); X.fill(); X.stroke();
+  }
+  X.globalAlpha = 1;
+  const [ox, oy] = fbRot(d.ox, d.oy), nx = -dy, ny = dx, ar = d.r*1.3;
+  const bx = px + ox - dx*d.r*.85, by = py + oy - dy*d.r*.85;
+  for (const s of [-1, 1]) {
+    const qx = px + nx*ar*s, qy = py + ny*ar*s;
+    X.lineCap = 'round';
+    X.strokeStyle = '#2b2d42'; X.lineWidth = 10; X.beginPath(); X.moveTo(qx, qy); X.lineTo(bx, by); X.stroke();
+    X.strokeStyle = rc.pull > .85 ? '#ff6b6b' : '#a0522d'; X.lineWidth = 5; X.beginPath(); X.moveTo(qx, qy); X.lineTo(bx, by); X.stroke();
+    X.fillStyle = '#c98b4a'; X.strokeStyle = '#2b2d42'; X.lineWidth = 4; X.beginPath(); X.arc(qx, qy, 10, 0, TAU); X.fill(); X.stroke();
+  }
+  X.strokeStyle = 'rgba(43,45,66,.25)'; X.lineWidth = 8; X.beginPath(); X.arc(px, py, d.r + 24, 0, TAU); X.stroke();
+  X.strokeStyle = rc.pull > .85 ? '#ff6b6b' : '#ffe066'; X.lineWidth = 6;
+  X.beginPath(); X.arc(px, py, d.r + 24, -Math.PI/2, -Math.PI/2 + TAU*rc.pull); X.stroke();
+}
+function rcRender(){
+  X.setTransform(DPR, 0, 0, DPR, 0, 0);
+  X.fillStyle = '#6cc24a'; X.fillRect(0, 0, W, H);
+  X.fillStyle = '#74c952';
+  for (let x = -H; x < W; x += 60) { X.beginPath(); X.moveTo(x, 0); X.lineTo(x + 30, 0); X.lineTo(x + 30 + H, H); X.lineTo(x + H, H); X.fill(); }
+  const s = view.s, sh = game.shake, cx = view.cx + (Math.random() - .5)*sh, cy = view.cy + (Math.random() - .5)*sh;
+  if (fb.vertical) X.setTransform(0, -s*DPR, s*DPR, 0, cx*DPR, cy*DPR); else X.setTransform(s*DPR, 0, 0, s*DPR, cx*DPR, cy*DPR);
+  rcDrawWorld();
+  X.setTransform(s*DPR, 0, 0, s*DPR, cx*DPR, cy*DPR);
+  rcDrawMarks();
+  rcDrawAim();
+  rc.racers.map(fbProxy).sort((a, b) => a.y - b.y).forEach(p => {
+    if (p.rs) { X.globalAlpha = .55; drawPlayer(p); X.globalAlpha = 1; } else drawPlayer(p);
+  });
+  drawParts();
+  X.setTransform(DPR, 0, 0, DPR, 0, 0);
+  drawHUD();
+}
+function drawRaceBlock(i, alignRight){
+  const name = nameOf(i), c = COL[i], r = rc.racers[i];
+  if (!r) return;
+  X.font = `900 20px ${FONT}`;
+  const nw = X.measureText(name).width + 18, txt = 'LAP ' + rcLap(r.prog) + '/' + game.laps;
+  X.font = `900 17px ${FONT}`;
+  const tw = X.measureText(txt).width, w = nw + 22 + tw + 8, h = 38, x0 = alignRight ? -w : 0;
+  X.strokeStyle = '#2b2d42'; X.lineWidth = 3.5;
+  rr(x0, 3, w, h, 19); X.fillStyle = '#2b2d42'; X.fill();
+  rr(x0, 0, w, h, 19); X.fillStyle = '#fffdf6'; X.fill(); X.stroke();
+  rr(x0 + 4, 4, nw, h - 8, 15); X.fillStyle = c.main; X.fill();
+  X.textAlign = 'center'; X.textBaseline = 'middle';
+  X.font = `900 20px ${FONT}`; X.fillStyle = '#fff'; X.fillText(name, x0 + 4 + nw/2, h/2 + 1);
+  X.font = `900 17px ${FONT}`; X.fillStyle = '#2b2d42'; X.fillText(txt, x0 + nw + 12 + tw/2, h/2 - 2);
+  const f = Math.max(0, Math.min(1, r.last.prog/rc.goal)), bw = tw;
+  X.fillStyle = '#e9ecef'; X.fillRect(x0 + nw + 12, h - 11, bw, 5);
+  X.fillStyle = c.main; X.fillRect(x0 + nw + 12, h - 11, bw*f, 5);
+}
+
 // ---------- menu / UI ----------
 function seg(id, cb){
   const el = $(id);
@@ -1323,10 +1655,17 @@ $('#btnMute').onclick = () => { muted = !muted; $('#btnMute').style.opacity = mu
 function togglePause(){ if (game.demo) return; game.paused = !game.paused; $('#pause').classList.toggle('hidden', !game.paused); }
 document.addEventListener('visibilitychange', () => { if (document.hidden && !game.demo && !game.paused && game.state !== 'over') togglePause(); });
 
+seg('#laps', v => game.laps = v);
 seg('#mode', v => { game.modeSel = v; game.slingSel = v === 1; renderHelp(); });
 const pu = c => `<span class="pu" style="background:${c}"></span>`;
 function renderHelp(){
-$('.tag').textContent = game.modeSel === 2 ? 'Flick, pass and score!' : 'Bump your rival off the island!';
+$('.tag').textContent = ['Bump your rival off the island!', 'Bump your rival off the island!', 'Flick, pass and score!', 'Fling around the track. First to the finish!'][game.modeSel];
+$('#lapsRow').style.display = game.modeSel === 3 ? '' : 'none';
+$('#tgtRow').style.display = game.modeSel === 3 ? 'none' : '';
+if (game.modeSel === 3) { $('#help').innerHTML = (isTouch
+  ? `<b>Race!</b> Take turns flinging your blob around the track.<br><b>Drag back</b> anywhere and let go.`
+  : `<b>Race!</b> Take turns flinging your blob around the track.<br><span class="r">P1</span>: <b>A</b>/<b>D</b> aim, <b>hold S</b> pull &amp; release, <b>W</b> eases off · <span class="bl">P2</span>: <b>←</b> <b>→</b> <b>↓</b> <b>↑</b> · or <b>drag back</b> with the mouse`)
+  + `<br>Stop <b>off the track</b> (or cut across the grass) and you go back to your last stop. Grass slows you down!`; return; }
 if (game.modeSel === 2) { $('#help').innerHTML = isTouch
   ? `<b>Football!</b> Take turns flicking one of your 4 players.<br><b>Tap a player</b>, <b>drag back</b> and let go to shoot.<br>Score in the rival's goal! 2 players: lay the phone flat between you.`
   : `<b>Football!</b> Take turns flicking one of your 4 players.<br><span class="r">P1</span>: <b>A</b>/<b>D</b> aim, <b>hold S</b> pull &amp; release to shoot, <b>W</b> switch player<br><span class="bl">P2</span>: same with <b>←</b> <b>→</b> <b>↓</b> <b>↑</b> · or click a player and <b>drag back</b>`; return; }
@@ -1343,7 +1682,8 @@ renderHelp();
 let last = performance.now();
 function frame(now){
   const dt = Math.min(1/30, (now - last)/1000); last = now;
-  if (game.fb && !game.demo) { fbUpdate(dt); fbRender(); } else { update(dt); render(); }
+  if (game.fb && !game.demo) { fbUpdate(dt); fbRender(); }
+  else if (game.race && !game.demo) { rcUpdate(dt); rcRender(); } else { update(dt); render(); }
   requestAnimationFrame(frame);
 }
 layout(); startDemo();
