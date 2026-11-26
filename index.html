@@ -44,7 +44,7 @@
   .seg button:first-child{border-left:0}
   .seg button.on{background:var(--sun)}
   .seg.wide{width:100%;margin:2px 0 10px;display:grid;grid-template-columns:repeat(6,1fr);gap:3px;background:var(--ink)}
-  .seg.wide button{border:0;background:#fff;grid-column:span 2;padding:9px 2px} .seg.wide button:nth-child(n+4){grid-column:span 3}
+  .seg.wide button{border:0;background:#fff;grid-column:span 2;padding:9px 2px}
   .seg.wide button.on{background:var(--sun)}
   @media (max-width:430px){ .seg button{padding:7px 8px;font-size:14px} .opt{font-size:15px} }
   .help{margin-top:12px;padding:10px 12px;background:#eaf8ff;border:3px dashed #9fd8f5;border-radius:16px;font-size:14px;
@@ -90,9 +90,10 @@
       <button class="big b1" id="play1">1 Player<small>vs CPU</small></button>
       <button class="big b2" id="play2">2 Players<small>same device</small></button>
     </div>
-    <div class="seg wide" id="mode"><button data-v="0" class="on">Real-time</button><button data-v="1">Slingshot</button><button data-v="2">Football</button><button data-v="3">Race</button><button data-v="4">Curling</button></div>
+    <div class="seg wide" id="mode"><button data-v="0" class="on">Real-time</button><button data-v="1">Slingshot</button><button data-v="2">Football</button><button data-v="3">Race</button><button data-v="4">Curling</button><button data-v="5">Golf</button></div>
     <div class="opt"><span>CPU level</span><div class="seg" id="diff"><button data-v="0">Easy</button><button data-v="1" class="on">Normal</button><button data-v="2">Hard</button></div></div>
     <div class="opt" id="lapsRow" style="display:none"><span>Laps</span><div class="seg" id="laps"><button data-v="1" class="on">1</button><button data-v="2">2</button><button data-v="3">3</button></div></div>
+    <div class="opt" id="holesRow" style="display:none"><span>Holes</span><div class="seg" id="holes"><button data-v="3" class="on">3</button><button data-v="6">6</button><button data-v="9">9</button></div></div>
     <div class="opt" id="tgtRow"><span>First to</span><div class="seg" id="tgt"><button data-v="3" class="on">3</button><button data-v="5">5</button><button data-v="7">7</button></div></div>
     <div class="help" id="help"></div>
   </div>
@@ -152,7 +153,7 @@ let area = { x:0, y:0, w:0, h:0 };
 const game = {
   state:'countdown', demo:true, mode:1, diff:1, target:3, score:[0,0],
   R:BASE_R, time:0, timer:0, pending:null, t:0,
-  sling:false, slingSel:false, fb:false, race:false, curl:false, laps:1, modeSel:0, sub:'', turn:0, roundNo:0, Rtarget:BASE_R, still:0, moveT:0, turnCount:0,
+  sling:false, slingSel:false, fb:false, race:false, curl:false, golf:false, holes:3, laps:1, modeSel:0, sub:'', turn:0, roundNo:0, Rtarget:BASE_R, still:0, moveT:0, turnCount:0,
   players:[], powerups:[], parts:[], texts:[], shake:0, banner:null, nextPU:5, paused:false
 };
 
@@ -306,15 +307,16 @@ function layout(){
   area = { x:ax, y:ay, w:aw, h:ah };
   view.s = Math.min(aw, ah) / (2*(BASE_R + (isTouch ? 20 : 34)));
   view.cx = ax + aw/2; view.cy = ay + ah/2;
-  if ((game.fb || game.race || game.curl) && !game.demo) {   // football / race: the field takes the whole screen
+  if ((game.fb || game.race || game.curl || game.golf) && !game.demo) {   // football / race: the field takes the whole screen
     pads.forEach(p => p.style.display = 'none');
     fb.vertical = portrait;
-    const tp = portrait ? 48 : 54, bt = portrait ? 48 : 6;
+    const tp = portrait ? 48 : 54, bt = portrait ? 48 : game.golf ? 32 : 6;
     area = { x:0, y:tp, w:W, h:H - tp - bt };
-    const lng = game.race ? RC.W + 50 : game.curl ? CL.X1 - CL.X0 + 130 : FB.PL + 2*FB.GD + 80, sht = game.race ? RC.H + 50 : game.curl ? CL.SW + 170 : FB.PW + 80;
+    const lng = game.race ? RC.W + 50 : game.curl ? CL.X1 - CL.X0 + 130 : game.golf ? GL.W + 40 : FB.PL + 2*FB.GD + 80, sht = game.race ? RC.H + 50 : game.curl ? CL.SW + 170 : game.golf ? GL.H + 40 : FB.PW + 80;
     view.s = portrait ? Math.min(area.h/lng, area.w/sht) : Math.min(area.w/lng, area.h/sht);
     view.cx = W/2; view.cy = area.y + area.h/2;
-    Object.assign(ctrl.style, { left:'50%', right:'auto', top:'6px', flexDirection:'row', transform:'translateX(-50%)' });
+    Object.assign(ctrl.style, portrait && game.mode === 2 ? { left:'10px', right:'auto', top:'6px', flexDirection:'row', transform:'none' }
+                                                          : { left:'50%', right:'auto', top:'6px', flexDirection:'row', transform:'translateX(-50%)' });
   }
 }
 addEventListener('resize', layout);
@@ -345,17 +347,17 @@ function startRound(){
   if (!game.demo) { banner('3'); sfx.beep(false); }
 }
 function startMatch(mode){
-  game.demo = false; game.mode = mode; game.score = [0,0]; game.paused = false; game.fb = game.modeSel === 2; game.race = game.modeSel === 3; game.curl = game.modeSel === 4; game.sling = game.slingSel && !game.fb; game.roundNo = 0;
+  game.demo = false; game.mode = mode; game.score = [0,0]; game.paused = false; game.fb = game.modeSel === 2; game.race = game.modeSel === 3; game.curl = game.modeSel === 4; game.golf = game.modeSel === 5; game.sling = game.slingSel && !game.fb; game.roundNo = 0;
   pads.forEach((el, i) => el.querySelector('.hint').textContent = 'P' + (i+1) + (game.sling ? ' · ←→ aim · hold ↓, let go' : ' · double-tap = DASH'));
   game.players = [makePlayer(0, false), makePlayer(1, mode === 1)];
   game.parts = []; game.texts = [];
   $('#menu').classList.add('hidden'); $('#over').classList.add('hidden'); $('#pause').classList.add('hidden');
   held.forEach(h => h.u = h.d = h.l = h.r = 0);
-  if (game.fb || game.race || game.curl) { const el = document.documentElement; if (el.requestFullscreen && !document.fullscreenElement) el.requestFullscreen().catch(() => {}); }
-  layout(); if (game.fb) fbInit(); else if (game.race) rcInit(); else if (game.curl) clInit(); else startRound();
+  if (game.fb || game.race || game.curl || game.golf) { const el = document.documentElement; if (el.requestFullscreen && !document.fullscreenElement) el.requestFullscreen().catch(() => {}); }
+  layout(); if (game.fb) fbInit(); else if (game.race) rcInit(); else if (game.curl) clInit(); else if (game.golf) glInit(); else startRound();
 }
 function startDemo(){
-  game.demo = true; game.mode = 2; game.paused = false; game.sling = false; game.fb = false; game.race = false; game.curl = false;
+  game.demo = true; game.mode = 2; game.paused = false; game.sling = false; game.fb = false; game.race = false; game.curl = false; game.golf = false;
   game.players = [makePlayer(0, true), makePlayer(1, true)];
   $('#menu').classList.remove('hidden'); $('#over').classList.add('hidden'); $('#pause').classList.add('hidden');
   layout(); startRound();
@@ -725,7 +727,7 @@ function matchOver(w){
   t.textContent = (w === 0 && game.mode === 1) ? 'YOU WIN!' : (w === 1 && game.mode === 1) ? 'CPU WINS!' : nameOf(w) + ' WINS!';
   t.style.color = COL[w].main;
   t.style.webkitTextStroke = '3px #2b2d42'; t.style.paintOrder = 'stroke fill'; t.style.textShadow = '0 4px 0 #2b2d42';
-  $('#overSub').textContent = game.race ? (game.laps + (game.laps > 1 ? ' laps' : ' lap') + ' · ' + (game.mode === 1 && w === 1 ? 'try again!' : 'checkered flag!')) : 'Final score ' + game.score[0] + ' – ' + game.score[1] + (game.mode === 1 && w === 1 ? ' · try again!' : game.fb || game.curl ? ' · what a match!' : ' · splendid splashing!');
+  $('#overSub').textContent = game.golf ? ('Strokes ' + gl.total[0] + ' – ' + gl.total[1] + ' over ' + game.holes + ' holes' + (game.mode === 1 && w === 1 ? ' · try again!' : ' · nice putting!')) : game.race ? (game.laps + (game.laps > 1 ? ' laps' : ' lap') + ' · ' + (game.mode === 1 && w === 1 ? 'try again!' : 'checkered flag!')) : 'Final score ' + game.score[0] + ' – ' + game.score[1] + (game.mode === 1 && w === 1 ? ' · try again!' : game.fb || game.curl ? ' · what a match!' : ' · splendid splashing!');
   setTimeout(() => { if (game.state === 'over') $('#over').classList.remove('hidden'); }, 700);
   layout();
 }
@@ -874,7 +876,7 @@ function drawPlayer(p){
     for (let k = 0; k < 3; k++) { const a = game.t*7 + k*TAU/3; star(p.x + Math.cos(a)*r*.7, p.y - r - 8 + Math.sin(a)*6, 7, '#ffe066'); }
   }
   // name tag
-  if (p.falling < 0 && !game.demo && !game.fb && !game.race && !game.curl) {
+  if (p.falling < 0 && !game.demo && !game.fb && !game.race && !game.curl && !game.golf) {
     const lbl = nameOf(p.i); X.font = `900 18px ${FONT}`; const w = X.measureText(lbl).width + 14;
     const ty = p.y - p.r - 30;
     X.fillStyle = c.main; X.strokeStyle = '#2b2d42'; X.lineWidth = 3; rr(p.x - w/2, ty - 12, w, 24, 10); X.fill(); X.stroke();
@@ -911,6 +913,7 @@ function drawParts(){
 }
 function drawScoreBlock(i, alignRight){
   if (game.race) return drawRaceBlock(i, alignRight);
+  if (game.golf) return drawGolfBlock(i, alignRight);
   const name = nameOf(i), c = COL[i], n = game.target;
   X.font = `900 20px ${FONT}`;
   const nw = X.measureText(name).width + 18, pip = 13, gap = 6, w = nw + 10 + n*(pip*2 + gap) + 8, h = 38;
@@ -931,8 +934,8 @@ function drawHUD(){
   if (game.demo) return;
   const two = game.mode === 2, hs = W < 520 ? .75 : 1;
   if (isTouch && portrait && two) {
-    X.save(); X.translate(10, game.fb || game.race || game.curl ? H - 6 - 38*hs : area.y + area.h - 34*hs); X.scale(hs, hs); drawScoreBlock(0, false); X.restore();
-    X.save(); X.translate(W - 10, game.fb || game.race || game.curl ? 6 + 38*hs : area.y + 34*hs); X.rotate(Math.PI); X.scale(hs, hs); drawScoreBlock(1, false); X.restore();
+    X.save(); X.translate(10, game.fb || game.race || game.curl || game.golf ? H - 6 - 38*hs : area.y + area.h - 34*hs); X.scale(hs, hs); drawScoreBlock(0, false); X.restore();
+    X.save(); X.translate(W - 10, game.fb || game.race || game.curl || game.golf ? 6 + 38*hs : area.y + 34*hs); X.rotate(Math.PI); X.scale(hs, hs); drawScoreBlock(1, false); X.restore();
   } else {
     X.save(); X.translate(10, 10); X.scale(hs, hs); drawScoreBlock(0, false); X.restore();
     X.save(); X.translate(W - 10, 10); X.scale(hs, hs); drawScoreBlock(1, true); X.restore();
@@ -1944,6 +1947,390 @@ function clRender(){
   drawHUD();
 }
 
+// ---------- mini-golf mode ----------
+// Canonical course area GL.W x GL.H centred on 0; shown rotated on portrait screens (shares fb.vertical / fbRot).
+const GL = { W:1300, H:780, R:16, CR:25, WT:8, MU:300, MUS:1100, VMIN:50, VR:950, E:.72, SINKV:620, MAXS:8 };
+const GL_AI = [ { n:25, an:.12, pn:.15 }, { n:70, an:.045, pn:.06 }, { n:160, an:.02, pn:.03 } ];
+const RECT = (x0, y0, x1, y1) => [[x0, y0], [x1, y0], [x1, y1], [x0, y1]];
+const OCT = (x, y, r) => Array.from({ length:8 }, (_, k) => [x + Math.cos(k*Math.PI/4 + Math.PI/8)*r, y + Math.sin(k*Math.PI/4 + Math.PI/8)*r]);
+const GL_HOLES = [
+  { name:'Warm-up', par:2, tee:[-470, 0], cup:[460, 0], poly:RECT(-560, -130, 560, 130), obs:[RECT(-30, -30, 30, 30)], sand:[], water:[] },
+  { name:'Dogleg', par:3, tee:[-490, 230], cup:[440, -230], poly:[[-580, 130], [320, 130], [320, -330], [560, -330], [560, 330], [-580, 330]], obs:[], sand:[[440, 230, 62]], water:[] },
+  { name:'Zig-zag', par:3, tee:[-480, -210], cup:[480, 210], poly:RECT(-580, -320, 580, 320), obs:[RECT(-220, -320, -180, 150), RECT(180, -150, 220, 320)], sand:[], water:[] },
+  { name:'The Pond', par:3, tee:[-480, 0], cup:[450, 0], poly:RECT(-580, -300, 580, 300), obs:[], sand:[[300, -190, 55]], water:[{ c:[40, 0, 170] }] },
+  { name:'Pinball', par:2, tee:[-470, 0], cup:[470, 0], poly:RECT(-560, -330, 560, 330), obs:[OCT(-170, -130, 46), OCT(-170, 130, 46), OCT(60, 0, 52), OCT(300, -170, 46), OCT(300, 170, 46)], sand:[], water:[] },
+  { name:'Diamond', par:3, tee:[-470, 0], cup:[380, 0], poly:[[-580, 0], [-220, -320], [300, -320], [580, 0], [300, 320], [-220, 320]], obs:[[[0, -110], [170, 0], [0, 110]]], sand:[[160, -215, 55], [160, 215, 55]], water:[] },
+  { name:'U-turn', par:3, tee:[-470, -180], cup:[-450, 180], poly:RECT(-580, -320, 580, 320), obs:[RECT(-580, -30, 300, 30)], sand:[[460, 0, 70]], water:[{ r:[-150, 150, -50, 320] }] },
+  { name:'Snake', par:4, tee:[-500, -240], cup:[470, -230], poly:RECT(-600, -330, 600, 330), obs:[RECT(-320, -330, -280, 170), RECT(-20, -170, 20, 330), RECT(280, -330, 320, 170)], sand:[[150, 250, 60]], water:[] },
+  { name:'The Bridge', par:3, tee:[-480, 200], cup:[470, -200], poly:RECT(-580, -320, 580, 320), obs:[OCT(330, -90, 40)], sand:[[200, 170, 70]], water:[{ r:[-60, -320, 60, -55] }, { r:[-60, 55, 60, 320] }] }
+];
+const gl = { hole:0, H:null, segs:[], dist:null, balls:[], strokes:[[], []], total:[0, 0], done:[false, false], turn:0, sub:'aim',
+             aim:0, aim0:0, pull:0, wasDown:true, plan:null, aiT:0, still:0, moveT:0, timer:0, drag:null, honor:0, last:-1, pred:null };
+
+const glInPoly = (x, y, P) => { let c = false; for (let i = 0, j = P.length - 1; i < P.length; j = i++) { const [xi, yi] = P[i], [xj, yj] = P[j]; if ((yi > y) !== (yj > y) && x < (xj - xi)*(y - yi)/(yj - yi) + xi) c = !c; } return c; };
+const glInWater = (x, y) => gl.H.water.some(w => w.c ? Math.hypot(x - w.c[0], y - w.c[1]) < w.c[2] : x > w.r[0] && x < w.r[2] && y > w.r[1] && y < w.r[3]);
+const glInSand = (x, y) => gl.H.sand.some(([sx, sy, r]) => Math.hypot(x - sx, y - sy) < r);
+
+function glSetupHole(i){
+  const H = GL_HOLES[i]; gl.H = H; gl.hole = i;
+  const segs = [], add = P => P.forEach((p, k) => { const q = P[(k + 1) % P.length]; segs.push([p[0], p[1], q[0], q[1]]); });
+  add(H.poly); H.obs.forEach(add); gl.segs = segs;
+  // path-distance field to the cup (so the CPU and the "away" rule understand doglegs)
+  const S = 20, nx = Math.ceil(GL.W/S) + 1, ny = Math.ceil(GL.H/S) + 1, x0 = -GL.W/2, y0 = -GL.H/2;
+  const walk = new Uint8Array(nx*ny), dist = new Float32Array(nx*ny).fill(1e9);
+  for (let j = 0; j < ny; j++) for (let k = 0; k < nx; k++) {
+    const x = x0 + k*S, y = y0 + j*S;
+    walk[j*nx + k] = glInPoly(x, y, H.poly) && !H.obs.some(o => glInPoly(x, y, o)) && !glInWater(x, y) ? 1 : 0;
+  }
+  const ci = Math.round((H.cup[0] - x0)/S), cj = Math.round((H.cup[1] - y0)/S);
+  dist[cj*nx + ci] = 0; const open = [cj*nx + ci], done = new Uint8Array(nx*ny);
+  while (open.length) {
+    let bi = 0; for (let q = 1; q < open.length; q++) if (dist[open[q]] < dist[open[bi]]) bi = q;
+    const c = open[bi]; open[bi] = open[open.length - 1]; open.pop();
+    if (done[c]) continue; done[c] = 1;
+    const cx = c % nx, cy = (c/nx)|0;
+    for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) {
+      if (!dx && !dy) continue;
+      const X2 = cx + dx, Y2 = cy + dy; if (X2 < 0 || Y2 < 0 || X2 >= nx || Y2 >= ny) continue;
+      const n = Y2*nx + X2; if (!walk[n] || done[n]) continue;
+      const d = dist[c] + (dx && dy ? 1.414 : 1);
+      if (d < dist[n]) { dist[n] = d; open.push(n); }
+    }
+  }
+  gl.dist = { S, nx, ny, x0, y0, dist };
+}
+function glPathDist(x, y){
+  const D = gl.dist, k = Math.round((x - D.x0)/D.S), j = Math.round((y - D.y0)/D.S);
+  let best = 1e9;
+  for (let r = 0; r <= 2 && best >= 1e9; r++)
+    for (let dj = -r; dj <= r; dj++) for (let dk = -r; dk <= r; dk++) {
+      const K = k + dk, J = j + dj; if (K < 0 || J < 0 || K >= D.nx || J >= D.ny) continue;
+      const v = D.dist[J*D.nx + K]; if (v < 1e9) best = Math.min(best, v*D.S + Math.hypot(dk, dj)*D.S);
+    }
+  return best < 1e9 ? best : Math.hypot(x - gl.H.cup[0], y - gl.H.cup[1])*1.5;
+}
+function glWalls(b, quiet){
+  for (const [ax, ay, bx, by] of gl.segs) {
+    const dx = bx - ax, dy = by - ay, t = Math.max(0, Math.min(1, ((b.x - ax)*dx + (b.y - ay)*dy)/(dx*dx + dy*dy)));
+    const cx = ax + dx*t, cy = ay + dy*t, ex = b.x - cx, ey = b.y - cy, d = Math.hypot(ex, ey), min = b.r + GL.WT;
+    if (d < min && d > 0) {
+      const nx = ex/d, ny = ey/d; b.x = cx + nx*min; b.y = cy + ny*min;
+      const vn = b.vx*nx + b.vy*ny;
+      if (vn < 0) { b.vx -= (1 + GL.E)*vn*nx; b.vy -= (1 + GL.E)*vn*ny; if (!quiet && -vn > 120) tone(330, 160, .05, 'triangle', Math.min(.12, -vn/7000)); }
+    }
+  }
+}
+function glStep(B, dt, quiet){
+  const [cx, cy] = gl.H.cup;
+  for (const b of B) {
+    if (!b.inPlay || b.sunk || b.wet) continue;
+    const sp = Math.hypot(b.vx, b.vy);
+    if (sp > 0) {
+      const ns = Math.max(0, sp - (glInSand(b.x, b.y) ? GL.MUS : GL.MU)*dt);
+      if (ns < 5) { b.vx = 0; b.vy = 0; } else { b.vx *= ns/sp; b.vy *= ns/sp; }
+    }
+    const dc0 = Math.hypot(b.x - cx, b.y - cy);
+    if (dc0 < GL.CR*1.7 && dc0 > 1 && sp < 300) { b.vx += (cx - b.x)/dc0*160*dt; b.vy += (cy - b.y)/dc0*160*dt; }   // the cup's little slope
+    b.x += b.vx*dt; b.y += b.vy*dt;
+    glWalls(b, quiet);
+    const dc = Math.hypot(b.x - cx, b.y - cy), v = Math.hypot(b.vx, b.vy);
+    if (dc < GL.CR - b.r*.3) {
+      if (v < GL.SINKV) { b.sunk = true; b.vx = b.vy = 0; b.x = cx; b.y = cy; if (!quiet) glSinkFx(b); }
+      else if (!b.lipped) { b.lipped = true; const a = (Math.random() - .5)*.7, c = Math.cos(a), s = Math.sin(a); const vx = b.vx; b.vx = (vx*c - b.vy*s)*.8; b.vy = (vx*s + b.vy*c)*.8; if (!quiet) tone(700, 500, .06, 'square', .06); }
+    } else b.lipped = false;
+    if (glInWater(b.x, b.y)) {
+      b.wet = true; b.vx = b.vy = 0;
+      if (!quiet) { const [px, py] = fbRot(b.x, b.y); sfx.splash(); burst(px, py, 16, '#ffffff', 220, 'drop', 7); pop(px, py - 24, 'SPLASH! +1', '#fff', 26); }
+    }
+  }
+  const [a, c] = B;
+  if (a.inPlay && c.inPlay && !a.sunk && !c.sunk && !a.wet && !c.wet) fbCollide(a, c, quiet);
+}
+function glSinkFx(b){
+  b.falling = 0;
+  const [px, py] = fbRot(b.x, b.y);
+  [880, 660, 990].forEach((f, k) => tone(f, f, .09, 'triangle', .12, k*.07));
+  burst(px, py, 14, '#ffe066', 240, 'star', 9);
+}
+function glBall(team){
+  const b = fbBody(team, gl.H.tee[0], gl.H.tee[1]);
+  Object.assign(b, { r:GL.R, m:1, inPlay:false, sunk:false, wet:false, lie:null, lipped:false });
+  return b;
+}
+const glAway = i => { const b = gl.balls[i]; return b.inPlay ? glPathDist(b.x, b.y) : glPathDist(gl.H.tee[0], gl.H.tee[1]) + 1; };
+
+// --- flow ---
+function glInit(){
+  game.state = 'play'; game.parts = []; game.texts = [];
+  gl.total = [0, 0]; gl.strokes = [[], []]; gl.honor = 0;
+  glStartHole(0);
+}
+function glStartHole(i){
+  glSetupHole(i);
+  gl.balls = [glBall(0), glBall(1)]; gl.done = [false, false]; gl.cur = [0, 0]; gl.last = -1;
+  game.players = gl.balls;
+  banner('HOLE ' + (i + 1), gl.H.name + ' · PAR ' + gl.H.par, '#ffe066');
+  glStartTurn(gl.honor, true);
+}
+function glNextShooter(){
+  const open = [0, 1].filter(i => !gl.done[i]);
+  if (!open.length) return -1;
+  if (open.length === 1) return open[0];
+  const a = glAway(0), b = glAway(1);
+  if (Math.abs(a - b) < 1) return 1 - gl.last;
+  return a > b ? 0 : 1;
+}
+function glStartTurn(team, quiet){
+  const b = gl.balls[team];
+  if (!b.inPlay) {                          // tee up
+    b.inPlay = true; b.x = gl.H.tee[0]; b.y = gl.H.tee[1];
+    const o = gl.balls[1 - team];
+    if (o.inPlay && !o.sunk && Math.hypot(o.x - b.x, o.y - b.y) < b.r*2 + 4) b.y += (b.y > 0 ? -1 : 1)*(b.r*2 + 6);
+    b.lie = { x:b.x, y:b.y };
+  }
+  Object.assign(gl, { turn:team, sub:'aim', pull:0, wasDown:true, plan:null, aiT:0, drag:null, still:0, moveT:0, pred:null });
+  const [cx, cy] = gl.H.cup;
+  gl.aim = gl.aim0 = Math.atan2(cy - b.y, cx - b.x);
+  if (!quiet) banner(turnName(team), 'Stroke ' + (gl.cur[team] + 1), COL[team].main);
+}
+function glFire(){
+  const b = gl.balls[gl.turn], sp = GL.VMIN + Math.max(.02, gl.pull)*GL.VR;
+  b.lie = { x:b.x, y:b.y };
+  b.vx = Math.cos(gl.aim)*sp; b.vy = Math.sin(gl.aim)*sp; b.fx = Math.cos(gl.aim); b.fy = Math.sin(gl.aim);
+  b.ox = b.oy = 0; gl.pull = 0; gl.pred = null; gl.sub = 'moving'; gl.moveT = 0; gl.still = 0;
+  gl.cur[gl.turn]++; gl.last = gl.turn;
+  tone(240, 120, .08, 'triangle', .14); noise(.05, .2, 2000); buzz(12);
+}
+function glLabel(n, par){
+  if (n === 1) return 'HOLE IN ONE!';
+  const d = n - par;
+  return d <= -2 ? 'EAGLE!' : d === -1 ? 'BIRDIE!' : d === 0 ? 'PAR' : d === 1 ? 'BOGEY' : d === 2 ? 'DOUBLE BOGEY' : '+' + d;
+}
+function glAfterStop(){
+  for (const b of gl.balls) {
+    const i = b.team;
+    if (b.wet) {                              // back to where it was hit from (+1 if it was your own shot)
+      b.wet = false; b.x = b.lie.x; b.y = b.lie.y; b.vx = b.vy = 0; b.trail = [];
+      if (i === gl.turn) gl.cur[i]++;
+    }
+    if (b.sunk && !gl.done[i]) {
+      gl.done[i] = true;
+      const [px, py] = fbRot(gl.H.cup[0], gl.H.cup[1]);
+      pop(px, py - 40, glLabel(gl.cur[i], gl.H.par), gl.cur[i] <= gl.H.par ? '#ffe066' : '#fff', gl.cur[i] === 1 ? 40 : 32);
+      if (gl.cur[i] <= gl.H.par) sfx.point();
+    }
+    if (!gl.done[i] && gl.cur[i] >= GL.MAXS) {
+      gl.done[i] = true; gl.cur[i] = GL.MAXS; b.inPlay = false;
+      const [px, py] = fbRot(b.x, b.y); pop(px, py - 24, 'PICKED UP', '#fff', 24);
+    }
+    if (!b.sunk && b.inPlay) b.lie = { x:b.x, y:b.y };
+  }
+  const next = glNextShooter();
+  if (next >= 0) return glStartTurn(next, false);
+  // hole finished
+  for (const i of [0, 1]) { gl.strokes[i].push(gl.cur[i]); gl.total[i] += gl.cur[i]; }
+  game.score = [...gl.total];
+  if (gl.cur[0] !== gl.cur[1]) gl.honor = gl.cur[0] < gl.cur[1] ? 0 : 1;
+  const w = gl.cur[0] < gl.cur[1] ? 0 : gl.cur[1] < gl.cur[0] ? 1 : -1;
+  banner(w < 0 ? 'HALVED' : nameOf(w) + ' WINS HOLE', nameOf(0) + ' ' + gl.cur[0] + ' · ' + nameOf(1) + ' ' + gl.cur[1], w < 0 ? '#ffe066' : COL[w].main);
+  gl.sub = 'holeEnd'; gl.timer = 2.6;
+}
+function glFinish(){
+  const [a, b] = gl.total;
+  if (a !== b) return matchOver(a < b ? 0 : 1);
+  game.state = 'over'; sfx.win();
+  const t = $('#winTitle'); t.textContent = 'TIE GAME!'; t.style.color = '#ffd43b';
+  t.style.webkitTextStroke = '3px #2b2d42'; t.style.paintOrder = 'stroke fill'; t.style.textShadow = '0 4px 0 #2b2d42';
+  $('#overSub').textContent = 'Both on ' + a + ' strokes · play again?';
+  setTimeout(() => { if (game.state === 'over') $('#over').classList.remove('hidden'); }, 700);
+  layout();
+}
+// --- AI ---
+function glSim(team, ang, pow){
+  const B = gl.balls.map(b => ({ ...b, trail:[] })), me = B[team];
+  const sp = GL.VMIN + pow*GL.VR; me.vx = Math.cos(ang)*sp; me.vy = Math.sin(ang)*sp;
+  let s = 0;
+  for (; s < 1300; s++) {
+    glStep(B, 1/180, true);
+    if (me.sunk) return 1e4 - s*.01;
+    if (s % 6 === 0 && B.every(b => b.sunk || b.wet || !b.inPlay || (!b.vx && !b.vy))) break;
+  }
+  if (me.wet) return -400 - glPathDist(me.lie.x, me.lie.y);
+  return -glPathDist(me.x, me.y) - (glInSand(me.x, me.y) ? 70 : 0);
+}
+function glPlan(team){
+  const cfg = GL_AI[game.diff], b = gl.balls[team], [cx, cy] = gl.H.cup, direct = Math.atan2(cy - b.y, cx - b.x);
+  let best = null;
+  for (let k = 0; k < cfg.n; k++) {
+    const ang = Math.random() < .45 ? direct + (Math.random() - .5)*.8 : Math.random()*TAU;
+    const pow = .08 + Math.random()*.92, sc = glSim(team, ang, pow);
+    if (!best || sc > best.sc) best = { ang, pow, sc };
+  }
+  return { ang: best.ang + (Math.random() - .5)*2*cfg.an, pow: Math.max(.03, Math.min(1, best.pow + (Math.random() - .5)*2*cfg.pn)) };
+}
+function glPredict(){
+  const b = gl.balls[gl.turn], t = { ...b, trail:[], inPlay:true }, other = { ...gl.balls[1 - gl.turn], inPlay:false };
+  const sp = GL.VMIN + Math.max(.02, gl.pull)*GL.VR; t.vx = Math.cos(gl.aim)*sp; t.vy = Math.sin(gl.aim)*sp;
+  const pts = []; let len = 0, px = t.x, py = t.y;
+  for (let s = 0; s < 400 && len < 300; s++) {
+    glStep([t, other], 1/120, true);
+    len += Math.hypot(t.x - px, t.y - py); px = t.x; py = t.y;
+    if (s % 3 === 0) pts.push([t.x, t.y]);
+    if (t.sunk || t.wet || (!t.vx && !t.vy)) break;
+  }
+  return pts;
+}
+function glUpdate(dt){
+  game.t += dt; updateFX(dt);
+  for (const d of gl.balls) { d.blink -= dt; if (d.blink < -.12) d.blink = 2 + Math.random()*3; d.hit = Math.max(0, d.hit - dt); if (d.falling >= 0) d.falling += dt; }
+  if (game.paused || game.state === 'over') return;
+  const team = gl.turn, me = gl.balls[team];
+  if (gl.sub === 'aim') {
+    if (fbIsAI(team)) {
+      gl.aiT += dt;
+      if (!gl.plan && gl.aiT > .35) { gl.plan = glPlan(team); gl.aiT = .35; }
+      if (gl.plan) {
+        const k = Math.min(1, (gl.aiT - .35)/.7), e = k*k*(3 - 2*k);
+        let dd = gl.plan.ang - gl.aim0; dd = Math.atan2(Math.sin(dd), Math.cos(dd));
+        gl.aim = gl.aim0 + dd*e;
+        if (gl.aiT > .9) gl.pull = Math.min(gl.plan.pow, gl.pull + dt*1.2);
+        if (gl.aiT > 1.45 && gl.pull >= gl.plan.pow - 1e-6) glFire();
+      }
+    } else if (!gl.drag) {
+      const inp = slingInput(team);
+      gl.rotHold = inp.rot ? (gl.rotHold || 0) + dt : 0;
+      gl.aim += inp.rot*(.5 + Math.min(1, gl.rotHold)*1.8)*dt;
+      if (inp.down) gl.pull = Math.min(1, gl.pull + dt*.7);
+      if (inp.up) gl.pull = Math.max(0, gl.pull - dt*1.5);
+      if (!inp.down && gl.wasDown && gl.pull > .02) { gl.wasDown = false; glFire(); }
+      else gl.wasDown = inp.down;
+    }
+    if (gl.sub === 'aim') { me.ox = -Math.cos(gl.aim)*gl.pull*18; me.oy = -Math.sin(gl.aim)*gl.pull*18; gl.pred = glPredict(); }
+    return;
+  }
+  if (gl.sub === 'moving') {
+    for (let k = 0; k < 6; k++) glStep(gl.balls, dt/6, false);
+    for (const d of gl.balls) if (d.inPlay && !d.sunk && d.vx*d.vx + d.vy*d.vy > 500*500) d.trail.push({ x:d.x, y:d.y, r:d.r, life:.15 });
+    gl.moveT += dt;
+    gl.still = gl.balls.some(b => b.inPlay && !b.sunk && !b.wet && (b.vx || b.vy)) ? 0 : gl.still + dt;
+    if (gl.still > .35 || gl.moveT > 12) { gl.balls.forEach(b => { b.vx = b.vy = 0; }); glAfterStop(); }
+  } else if (gl.sub === 'holeEnd') {
+    gl.timer -= dt;
+    if (gl.timer <= 0) { if (gl.hole + 1 >= game.holes) glFinish(); else glStartHole(gl.hole + 1); }
+  }
+}
+// --- touch / mouse: drag back anywhere, let go ---
+const glHuman = () => game.golf && !game.demo && !game.paused && game.state === 'play' && gl.sub === 'aim' && !fbIsAI(gl.turn);
+C.addEventListener('pointerdown', e => {
+  if (!glHuman()) return;
+  gl.drag = { id:e.pointerId, sx:e.clientX, sy:e.clientY };
+  try { C.setPointerCapture(e.pointerId); } catch(_){}
+});
+C.addEventListener('pointermove', e => {
+  if (!gl.drag || e.pointerId !== gl.drag.id || !glHuman()) return;
+  const dx = e.clientX - gl.drag.sx, dy = e.clientY - gl.drag.sy, l = Math.hypot(dx, dy);
+  if (l < 10) { gl.pull = 0; return; }
+  const [vx, vy] = fb.vertical ? [-dy, dx] : [dx, dy];
+  gl.aim = Math.atan2(-vy, -vx); gl.pull = Math.min(1, l/(Math.min(W, H)*.34));
+});
+const glDragEnd = e => {
+  if (!gl.drag || e.pointerId !== gl.drag.id) return;
+  gl.drag = null;
+  if (glHuman() && gl.pull > .02) glFire(); else gl.pull = 0;
+};
+['pointerup','pointercancel'].forEach(t => C.addEventListener(t, glDragEnd));
+
+// --- drawing ---
+function glPolyPath(P){ X.beginPath(); P.forEach(([x, y], i) => i ? X.lineTo(x, y) : X.moveTo(x, y)); X.closePath(); }
+function glDrawCourse(){
+  const H = gl.H;
+  X.lineJoin = 'round';
+  X.save(); X.translate(8, 14); glPolyPath(H.poly); X.fillStyle = 'rgba(0,0,0,.18)'; X.fill(); X.restore();
+  glPolyPath(H.poly); X.fillStyle = '#8ddc5f'; X.fill();
+  X.save(); glPolyPath(H.poly); X.clip();
+  X.fillStyle = '#9be66d';
+  for (let x = -GL.W; x < GL.W; x += 90) { X.beginPath(); X.moveTo(x, -GL.H); X.lineTo(x + 45, -GL.H); X.lineTo(x + 45 + GL.H*.5, GL.H); X.lineTo(x + GL.H*.5, GL.H); X.fill(); }
+  // hazards
+  for (const [x, y, r] of H.sand) {
+    X.fillStyle = '#f7d794'; X.strokeStyle = '#d4a85a'; X.lineWidth = 4; X.beginPath(); X.arc(x, y, r, 0, TAU); X.fill(); X.stroke();
+    X.fillStyle = 'rgba(180,130,60,.35)'; for (let k = 0; k < 9; k++) { const a = k*2.4, d = r*.25 + (k*37 % 10)/10*r*.6; X.beginPath(); X.arc(x + Math.cos(a)*d, y + Math.sin(a)*d, 2.5, 0, TAU); X.fill(); }
+  }
+  for (const w of H.water) {
+    X.fillStyle = '#4dabf7'; X.strokeStyle = '#1c6fb8'; X.lineWidth = 5; X.beginPath();
+    if (w.c) X.arc(w.c[0], w.c[1], w.c[2], 0, TAU); else X.rect(w.r[0], w.r[1], w.r[2] - w.r[0], w.r[3] - w.r[1]);
+    X.fill(); X.stroke();
+    X.save(); X.clip(); X.strokeStyle = 'rgba(255,255,255,.45)'; X.lineWidth = 3; X.lineCap = 'round';
+    const bx = w.c ? w.c[0] - w.c[2] : w.r[0], by = w.c ? w.c[1] - w.c[2] : w.r[1], bw = w.c ? w.c[2]*2 : w.r[2] - w.r[0], bh = w.c ? w.c[2]*2 : w.r[3] - w.r[1];
+    for (let y = by + 18; y < by + bh; y += 30) for (let x = bx + ((y/30|0) % 2)*20 + (game.t*15 % 40) - 40; x < bx + bw; x += 40) { X.beginPath(); X.arc(x, y, 8, Math.PI*.15, Math.PI*.85); X.stroke(); }
+    X.restore();
+  }
+  X.restore();
+  // tee mat
+  X.fillStyle = '#4fa83a'; X.strokeStyle = 'rgba(43,45,66,.5)'; X.lineWidth = 3; rr(H.tee[0] - 26, H.tee[1] - 26, 52, 52, 8); X.fill(); X.stroke();
+  // cup
+  X.fillStyle = '#2b2d42'; X.beginPath(); X.arc(H.cup[0], H.cup[1], GL.CR, 0, TAU); X.fill();
+  X.strokeStyle = '#fff'; X.lineWidth = 3; X.beginPath(); X.arc(H.cup[0], H.cup[1], GL.CR + 2, 0, TAU); X.stroke();
+  // walls + obstacles
+  const wall = P => { glPolyPath(P); X.strokeStyle = '#2b2d42'; X.lineWidth = GL.WT*2 + 6; X.stroke(); X.strokeStyle = '#e8a05c'; X.lineWidth = GL.WT*2; X.stroke(); };
+  for (const o of H.obs) { glPolyPath(o); X.fillStyle = '#e8a05c'; X.fill(); wall(o); glPolyPath(o); X.fillStyle = 'rgba(255,255,255,.12)'; X.fill(); }
+  wall(H.poly);
+}
+function glDrawAim(){
+  if (game.state !== 'play' || gl.sub !== 'aim') return;
+  const d = gl.balls[gl.turn], c = COL[gl.turn], [px, py] = fbRot(d.x, d.y), a = gl.aim + fbRotOff(), dx = Math.cos(a), dy = Math.sin(a);
+  if (gl.pred) gl.pred.forEach(([x, y], k) => { if (k % 2) return; const [sx, sy] = fbRot(x, y); X.globalAlpha = Math.max(.15, 1 - k/gl.pred.length); X.fillStyle = '#fff'; X.strokeStyle = '#2b2d42'; X.lineWidth = 2; X.beginPath(); X.arc(sx, sy, 4, 0, TAU); X.fill(); X.stroke(); });
+  X.globalAlpha = 1;
+  const [ox, oy] = fbRot(d.ox, d.oy), nx = -dy, ny = dx, ar = d.r*1.6, bx = px + ox - dx*d.r*.8, by = py + oy - dy*d.r*.8;
+  for (const s of [-1, 1]) {
+    const qx = px + nx*ar*s, qy = py + ny*ar*s;
+    X.lineCap = 'round';
+    X.strokeStyle = '#2b2d42'; X.lineWidth = 7; X.beginPath(); X.moveTo(qx, qy); X.lineTo(bx, by); X.stroke();
+    X.strokeStyle = '#a0522d'; X.lineWidth = 3.5; X.beginPath(); X.moveTo(qx, qy); X.lineTo(bx, by); X.stroke();
+    X.fillStyle = '#c98b4a'; X.strokeStyle = '#2b2d42'; X.lineWidth = 3; X.beginPath(); X.arc(qx, qy, 6, 0, TAU); X.fill(); X.stroke();
+  }
+  X.strokeStyle = 'rgba(43,45,66,.25)'; X.lineWidth = 6; X.beginPath(); X.arc(px, py, d.r + 16, 0, TAU); X.stroke();
+  X.strokeStyle = gl.pull > .85 ? '#ff6b6b' : '#ffe066'; X.lineWidth = 4.5; X.beginPath(); X.arc(px, py, d.r + 16, -Math.PI/2, -Math.PI/2 + TAU*gl.pull); X.stroke();
+  X.strokeStyle = c.main; X.lineWidth = 3; X.setLineDash([5, 5]); X.lineDashOffset = -game.t*20; X.beginPath(); X.arc(px, py, d.r + 7, 0, TAU); X.stroke(); X.setLineDash([]);
+}
+function glRender(){
+  X.setTransform(DPR, 0, 0, DPR, 0, 0);
+  X.fillStyle = '#5fb346'; X.fillRect(0, 0, W, H);
+  X.fillStyle = '#67bb4d';
+  for (let x = -H; x < W; x += 60) { X.beginPath(); X.moveTo(x, 0); X.lineTo(x + 30, 0); X.lineTo(x + 30 + H, H); X.lineTo(x + H, H); X.fill(); }
+  const s = view.s, sh = game.shake, cx = view.cx + (Math.random() - .5)*sh, cy = view.cy + (Math.random() - .5)*sh;
+  if (fb.vertical) X.setTransform(0, -s*DPR, s*DPR, 0, cx*DPR, cy*DPR); else X.setTransform(s*DPR, 0, 0, s*DPR, cx*DPR, cy*DPR);
+  glDrawCourse();
+  X.setTransform(s*DPR, 0, 0, s*DPR, cx*DPR, cy*DPR);
+  glDrawAim();
+  gl.balls.filter(b => b.inPlay && (!b.sunk || b.falling < .5)).map(fbProxy).sort((a, b) => a.y - b.y).forEach(p => drawPlayer(p));
+  // flag (kept upright on screen)
+  const [fx, fy] = fbRot(gl.H.cup[0], gl.H.cup[1]), wave = Math.sin(game.t*4)*3;
+  X.strokeStyle = '#2b2d42'; X.lineWidth = 4; X.lineCap = 'round'; X.beginPath(); X.moveTo(fx, fy); X.lineTo(fx, fy - 70); X.stroke();
+  X.fillStyle = '#ff6b6b'; X.lineWidth = 3; X.beginPath(); X.moveTo(fx, fy - 70); X.lineTo(fx + 38, fy - 60 + wave); X.lineTo(fx, fy - 48); X.closePath(); X.fill(); X.stroke();
+  outlinedText(String(gl.hole + 1), fx + 13, fy - 60 + wave*.5, 14, '#fff');
+  drawParts();
+  X.setTransform(DPR, 0, 0, DPR, 0, 0);
+  drawHUD();
+  // hole caption
+  const two = game.mode === 2, txt = 'HOLE ' + (gl.hole + 1) + '/' + game.holes + ' · PAR ' + gl.H.par;
+  X.textBaseline = 'middle';
+  if (isTouch && portrait && two) { X.textAlign = 'right'; outlinedText(txt, W - 12, H - 26, 17, '#fff'); }
+  else { X.textAlign = 'center'; outlinedText(txt, W/2, H - 18, 17, '#fff'); }
+}
+function drawGolfBlock(i, alignRight){
+  const name = nameOf(i), c = COL[i];
+  const now = gl.done[i] || gl.cur[i] ? gl.cur[i] : 0, txt = 'TOTAL ' + (gl.total[i] + (gl.sub === 'holeEnd' ? 0 : now)) + ' · NOW ' + now;
+  X.font = `900 20px ${FONT}`; const nw = X.measureText(name).width + 18;
+  X.font = `900 16px ${FONT}`; const tw = X.measureText(txt).width, w = nw + 20 + tw, h = 38, x0 = alignRight ? -w : 0;
+  X.strokeStyle = '#2b2d42'; X.lineWidth = 3.5;
+  rr(x0, 3, w, h, 19); X.fillStyle = '#2b2d42'; X.fill();
+  rr(x0, 0, w, h, 19); X.fillStyle = '#fffdf6'; X.fill(); X.stroke();
+  rr(x0 + 4, 4, nw, h - 8, 15); X.fillStyle = c.main; X.fill();
+  X.textAlign = 'center'; X.textBaseline = 'middle';
+  X.font = `900 20px ${FONT}`; X.fillStyle = '#fff'; X.fillText(name, x0 + 4 + nw/2, h/2 + 1);
+  X.font = `900 16px ${FONT}`; X.fillStyle = '#2b2d42'; X.fillText(txt, x0 + nw + 10 + tw/2, h/2 + 1);
+}
+
 // ---------- menu / UI ----------
 function seg(id, cb){
   const el = $(id);
@@ -1966,12 +2353,18 @@ function togglePause(){ if (game.demo) return; game.paused = !game.paused; $('#p
 document.addEventListener('visibilitychange', () => { if (document.hidden && !game.demo && !game.paused && game.state !== 'over') togglePause(); });
 
 seg('#laps', v => game.laps = v);
+seg('#holes', v => game.holes = v);
 seg('#mode', v => { game.modeSel = v; game.slingSel = v === 1; renderHelp(); });
 const pu = c => `<span class="pu" style="background:${c}"></span>`;
 function renderHelp(){
-$('.tag').textContent = ['Bump your rival off the island!', 'Bump your rival off the island!', 'Flick, pass and score!', 'Fling around the track. First to the finish!', 'Slide, curl and sweep to the button!'][game.modeSel];
+$('.tag').textContent = ['Bump your rival off the island!', 'Bump your rival off the island!', 'Flick, pass and score!', 'Fling around the track. First to the finish!', 'Slide, curl and sweep to the button!', 'Fewest strokes wins. Mind the water!'][game.modeSel];
 $('#lapsRow').style.display = game.modeSel === 3 ? '' : 'none';
-$('#tgtRow').style.display = game.modeSel === 3 ? 'none' : '';
+$('#tgtRow').style.display = game.modeSel === 3 || game.modeSel === 5 ? 'none' : '';
+$('#holesRow').style.display = game.modeSel === 5 ? '' : 'none';
+if (game.modeSel === 5) { $('#help').innerHTML = (isTouch
+  ? `<b>Mini-golf!</b> Sink your ball in the fewest strokes.<br><b>Drag back</b> anywhere and let go.`
+  : `<b>Mini-golf!</b> Sink your ball in the fewest strokes.<br><span class="r">P1</span>: <b>A</b>/<b>D</b> aim, <b>hold S</b> &amp; release to putt, <b>W</b> eases off · <span class="bl">P2</span>: <b>←</b> <b>→</b> <b>↓</b> <b>↑</b> · or <b>drag back</b> with the mouse`)
+  + `<br>Farthest ball plays next. Water = +1 stroke and back to your last spot. Sand slows you. Max ${GL.MAXS} strokes per hole.`; return; }
 if (game.modeSel === 4) { $('#help').innerHTML = (isTouch
   ? `<b>Curling!</b> 4 stones each per end, taking turns.<br><b>Drag back</b> to throw · <b>tap your stone</b> to change curl · <b>hold the screen</b> while it slides to sweep.`
   : `<b>Curling!</b> 4 stones each per end, taking turns.<br><span class="r">P1</span>: <b>A</b>/<b>D</b> aim, <b>hold S</b> &amp; release to throw, <b>W</b> curl · <span class="bl">P2</span>: <b>←</b> <b>→</b> <b>↓</b> <b>↑</b><br>Hold <b>↓</b> / <b>S</b> while it slides to <b>sweep</b> (further, less curl)`)
@@ -1998,7 +2391,8 @@ function frame(now){
   const dt = Math.min(1/30, (now - last)/1000); last = now;
   if (game.fb && !game.demo) { fbUpdate(dt); fbRender(); }
   else if (game.race && !game.demo) { rcUpdate(dt); rcRender(); }
-  else if (game.curl && !game.demo) { clUpdate(dt); clRender(); } else { update(dt); render(); }
+  else if (game.curl && !game.demo) { clUpdate(dt); clRender(); }
+  else if (game.golf && !game.demo) { glUpdate(dt); glRender(); } else { update(dt); render(); }
   requestAnimationFrame(frame);
 }
 layout(); startDemo();
