@@ -43,7 +43,9 @@
   .seg button{border:0;background:transparent;font-weight:800;font-size:15px;padding:7px 12px;border-left:3px solid var(--ink)}
   .seg button:first-child{border-left:0}
   .seg button.on{background:var(--sun)}
-  .seg.wide{width:100%;margin:2px 0 10px} .seg.wide button{flex:1;padding:9px 2px}
+  .seg.wide{width:100%;margin:2px 0 10px;display:grid;grid-template-columns:repeat(6,1fr);gap:3px;background:var(--ink)}
+  .seg.wide button{border:0;background:#fff;grid-column:span 2;padding:9px 2px} .seg.wide button:nth-child(n+4){grid-column:span 3}
+  .seg.wide button.on{background:var(--sun)}
   @media (max-width:430px){ .seg button{padding:7px 8px;font-size:14px} .opt{font-size:15px} }
   .help{margin-top:12px;padding:10px 12px;background:#eaf8ff;border:3px dashed #9fd8f5;border-radius:16px;font-size:14px;
     font-weight:700;line-height:1.45;text-align:left}
@@ -88,7 +90,7 @@
       <button class="big b1" id="play1">1 Player<small>vs CPU</small></button>
       <button class="big b2" id="play2">2 Players<small>same device</small></button>
     </div>
-    <div class="seg wide" id="mode"><button data-v="0" class="on">Real-time</button><button data-v="1">Slingshot</button><button data-v="2">Football</button><button data-v="3">Race</button></div>
+    <div class="seg wide" id="mode"><button data-v="0" class="on">Real-time</button><button data-v="1">Slingshot</button><button data-v="2">Football</button><button data-v="3">Race</button><button data-v="4">Curling</button></div>
     <div class="opt"><span>CPU level</span><div class="seg" id="diff"><button data-v="0">Easy</button><button data-v="1" class="on">Normal</button><button data-v="2">Hard</button></div></div>
     <div class="opt" id="lapsRow" style="display:none"><span>Laps</span><div class="seg" id="laps"><button data-v="1" class="on">1</button><button data-v="2">2</button><button data-v="3">3</button></div></div>
     <div class="opt" id="tgtRow"><span>First to</span><div class="seg" id="tgt"><button data-v="3" class="on">3</button><button data-v="5">5</button><button data-v="7">7</button></div></div>
@@ -150,7 +152,7 @@ let area = { x:0, y:0, w:0, h:0 };
 const game = {
   state:'countdown', demo:true, mode:1, diff:1, target:3, score:[0,0],
   R:BASE_R, time:0, timer:0, pending:null, t:0,
-  sling:false, slingSel:false, fb:false, race:false, laps:1, modeSel:0, sub:'', turn:0, roundNo:0, Rtarget:BASE_R, still:0, moveT:0, turnCount:0,
+  sling:false, slingSel:false, fb:false, race:false, curl:false, laps:1, modeSel:0, sub:'', turn:0, roundNo:0, Rtarget:BASE_R, still:0, moveT:0, turnCount:0,
   players:[], powerups:[], parts:[], texts:[], shake:0, banner:null, nextPU:5, paused:false
 };
 
@@ -215,6 +217,10 @@ addEventListener('keydown', e => {
   if (e.repeat) return;
   const i = humanSlot(m[0]);
   held[i][m[1]] = 1;
+  if (m[1] === 'u' && !game.demo && !game.paused && game.state === 'play') {   // quick taps on ▲ never get lost
+    if (game.curl && cl.sub === 'aim' && cl.turn === i && !fbIsAI(i) && cl.pull < .02) { clCycleCurl(); cl.upWas = true; }
+    if (game.fb && fb.sub === 'aim' && fb.turn === i && !fbIsAI(i) && fb.pull < .02) { fbCycle(); fb.upWas = true; }
+  }
   const now = performance.now(), lt = lastTap[i];
   if (lt.k === m[1] && now - lt.t < 260) { requestDash(i); lt.t = 0; }
   else { lt.k = m[1]; lt.t = now; }
@@ -300,12 +306,12 @@ function layout(){
   area = { x:ax, y:ay, w:aw, h:ah };
   view.s = Math.min(aw, ah) / (2*(BASE_R + (isTouch ? 20 : 34)));
   view.cx = ax + aw/2; view.cy = ay + ah/2;
-  if ((game.fb || game.race) && !game.demo) {   // football / race: the field takes the whole screen
+  if ((game.fb || game.race || game.curl) && !game.demo) {   // football / race: the field takes the whole screen
     pads.forEach(p => p.style.display = 'none');
     fb.vertical = portrait;
     const tp = portrait ? 48 : 54, bt = portrait ? 48 : 6;
     area = { x:0, y:tp, w:W, h:H - tp - bt };
-    const lng = game.race ? RC.W + 50 : FB.PL + 2*FB.GD + 80, sht = game.race ? RC.H + 50 : FB.PW + 80;
+    const lng = game.race ? RC.W + 50 : game.curl ? CL.X1 - CL.X0 + 130 : FB.PL + 2*FB.GD + 80, sht = game.race ? RC.H + 50 : game.curl ? CL.SW + 170 : FB.PW + 80;
     view.s = portrait ? Math.min(area.h/lng, area.w/sht) : Math.min(area.w/lng, area.h/sht);
     view.cx = W/2; view.cy = area.y + area.h/2;
     Object.assign(ctrl.style, { left:'50%', right:'auto', top:'6px', flexDirection:'row', transform:'translateX(-50%)' });
@@ -339,17 +345,17 @@ function startRound(){
   if (!game.demo) { banner('3'); sfx.beep(false); }
 }
 function startMatch(mode){
-  game.demo = false; game.mode = mode; game.score = [0,0]; game.paused = false; game.fb = game.modeSel === 2; game.race = game.modeSel === 3; game.sling = game.slingSel && !game.fb; game.roundNo = 0;
+  game.demo = false; game.mode = mode; game.score = [0,0]; game.paused = false; game.fb = game.modeSel === 2; game.race = game.modeSel === 3; game.curl = game.modeSel === 4; game.sling = game.slingSel && !game.fb; game.roundNo = 0;
   pads.forEach((el, i) => el.querySelector('.hint').textContent = 'P' + (i+1) + (game.sling ? ' · ←→ aim · hold ↓, let go' : ' · double-tap = DASH'));
   game.players = [makePlayer(0, false), makePlayer(1, mode === 1)];
   game.parts = []; game.texts = [];
   $('#menu').classList.add('hidden'); $('#over').classList.add('hidden'); $('#pause').classList.add('hidden');
   held.forEach(h => h.u = h.d = h.l = h.r = 0);
-  if (game.fb || game.race) { const el = document.documentElement; if (el.requestFullscreen && !document.fullscreenElement) el.requestFullscreen().catch(() => {}); }
-  layout(); if (game.fb) fbInit(); else if (game.race) rcInit(); else startRound();
+  if (game.fb || game.race || game.curl) { const el = document.documentElement; if (el.requestFullscreen && !document.fullscreenElement) el.requestFullscreen().catch(() => {}); }
+  layout(); if (game.fb) fbInit(); else if (game.race) rcInit(); else if (game.curl) clInit(); else startRound();
 }
 function startDemo(){
-  game.demo = true; game.mode = 2; game.paused = false; game.sling = false; game.fb = false; game.race = false;
+  game.demo = true; game.mode = 2; game.paused = false; game.sling = false; game.fb = false; game.race = false; game.curl = false;
   game.players = [makePlayer(0, true), makePlayer(1, true)];
   $('#menu').classList.remove('hidden'); $('#over').classList.add('hidden'); $('#pause').classList.add('hidden');
   layout(); startRound();
@@ -719,7 +725,7 @@ function matchOver(w){
   t.textContent = (w === 0 && game.mode === 1) ? 'YOU WIN!' : (w === 1 && game.mode === 1) ? 'CPU WINS!' : nameOf(w) + ' WINS!';
   t.style.color = COL[w].main;
   t.style.webkitTextStroke = '3px #2b2d42'; t.style.paintOrder = 'stroke fill'; t.style.textShadow = '0 4px 0 #2b2d42';
-  $('#overSub').textContent = game.race ? (game.laps + (game.laps > 1 ? ' laps' : ' lap') + ' · ' + (game.mode === 1 && w === 1 ? 'try again!' : 'checkered flag!')) : 'Final score ' + game.score[0] + ' – ' + game.score[1] + (game.mode === 1 && w === 1 ? ' · try again!' : game.fb ? ' · what a match!' : ' · splendid splashing!');
+  $('#overSub').textContent = game.race ? (game.laps + (game.laps > 1 ? ' laps' : ' lap') + ' · ' + (game.mode === 1 && w === 1 ? 'try again!' : 'checkered flag!')) : 'Final score ' + game.score[0] + ' – ' + game.score[1] + (game.mode === 1 && w === 1 ? ' · try again!' : game.fb || game.curl ? ' · what a match!' : ' · splendid splashing!');
   setTimeout(() => { if (game.state === 'over') $('#over').classList.remove('hidden'); }, 700);
   layout();
 }
@@ -868,7 +874,7 @@ function drawPlayer(p){
     for (let k = 0; k < 3; k++) { const a = game.t*7 + k*TAU/3; star(p.x + Math.cos(a)*r*.7, p.y - r - 8 + Math.sin(a)*6, 7, '#ffe066'); }
   }
   // name tag
-  if (p.falling < 0 && !game.demo && !game.fb && !game.race) {
+  if (p.falling < 0 && !game.demo && !game.fb && !game.race && !game.curl) {
     const lbl = nameOf(p.i); X.font = `900 18px ${FONT}`; const w = X.measureText(lbl).width + 14;
     const ty = p.y - p.r - 30;
     X.fillStyle = c.main; X.strokeStyle = '#2b2d42'; X.lineWidth = 3; rr(p.x - w/2, ty - 12, w, 24, 10); X.fill(); X.stroke();
@@ -925,8 +931,8 @@ function drawHUD(){
   if (game.demo) return;
   const two = game.mode === 2, hs = W < 520 ? .75 : 1;
   if (isTouch && portrait && two) {
-    X.save(); X.translate(10, game.fb || game.race ? H - 6 - 38*hs : area.y + area.h - 34*hs); X.scale(hs, hs); drawScoreBlock(0, false); X.restore();
-    X.save(); X.translate(W - 10, game.fb || game.race ? 6 + 38*hs : area.y + 34*hs); X.rotate(Math.PI); X.scale(hs, hs); drawScoreBlock(1, false); X.restore();
+    X.save(); X.translate(10, game.fb || game.race || game.curl ? H - 6 - 38*hs : area.y + area.h - 34*hs); X.scale(hs, hs); drawScoreBlock(0, false); X.restore();
+    X.save(); X.translate(W - 10, game.fb || game.race || game.curl ? 6 + 38*hs : area.y + 34*hs); X.rotate(Math.PI); X.scale(hs, hs); drawScoreBlock(1, false); X.restore();
   } else {
     X.save(); X.translate(10, 10); X.scale(hs, hs); drawScoreBlock(0, false); X.restore();
     X.save(); X.translate(W - 10, 10); X.scale(hs, hs); drawScoreBlock(1, true); X.restore();
@@ -1634,6 +1640,310 @@ function drawRaceBlock(i, alignRight){
   X.fillStyle = c.main; X.fillRect(x0 + nw + 12, h - 11, bw*f, 5);
 }
 
+// ---------- curling mode ----------
+// Canonical sheet along x: delivery at the left, house (target) at the right. Rotated upright on portrait screens.
+const CL = { X0:-620, X1:580, SW:440, HACK:-560, HOG:60, TEE:400, BACK:520, HR:120, R:22, MU:110, VMIN:200, VR:450, CURL:18, STONES:4, AIM:.3 };
+const CL_AI = [ { n:18, an:.03, pn:.04 }, { n:60, an:.012, pn:.015 }, { n:150, an:.004, pn:.005 } ];
+const cl = { stones:[], cur:null, turn:0, sub:'aim', aim:0, aim0:0, pull:0, curl:[1, -1], wasDown:true, upWas:true, plan:null, aiT:0,
+             still:0, moveT:0, timer:0, thrown:[0, 0], hammer:1, end:1, drag:null, press:false, sweeping:false, counting:[], pred:null, sweepT:0 };
+const clDecor = (() => { let seed = 5; const rnd = () => (seed = (seed*16807) % 2147483647)/2147483647; const a = [];
+  for (let i = 0; i < 160; i++) a.push([CL.X0 + rnd()*(CL.X1 - CL.X0), (rnd() - .5)*CL.SW, rnd()*2 + 1]); return a; })();
+const clSpeed = pull => CL.VMIN + pull*CL.VR;
+
+function clStep(B, dt, sweepStone, quiet){
+  for (const b of B) {
+    if (b.dead) continue;
+    let sp = Math.hypot(b.vx, b.vy);
+    if (sp > 0) {
+      const sw = b === sweepStone;
+      if (b.curl) { const k = b.curl*CL.CURL*(sw ? .55 : 1)*dt, vx = b.vx, vy = b.vy; b.vx += -vy/sp*k; b.vy += vx/sp*k; }
+      const s2 = Math.hypot(b.vx, b.vy), ns = Math.max(0, s2 - CL.MU*(sw ? .62 : 1)*dt);
+      if (ns < 4) { b.vx = 0; b.vy = 0; } else { b.vx *= ns/s2; b.vy *= ns/s2; }
+      b.x += b.vx*dt; b.y += b.vy*dt;
+      if (b.team < 0) b.spin += sp*dt/b.r;
+      if (b.x - b.r > CL.BACK || Math.abs(b.y) + b.r > CL.SW/2) {
+        b.dead = true; b.vx = b.vy = 0;
+        if (!quiet) { const [px, py] = fbRot(b.x, b.y); pop(px, py - 24, 'OUT!', '#fff', 28); burst(px, py, 10, '#d0ebff', 160, 'dot', 8); }
+      }
+    }
+  }
+  for (let i = 0; i < B.length; i++) for (let k = i + 1; k < B.length; k++) if (!B[i].dead && !B[k].dead) fbCollide(B[i], B[k], quiet);
+}
+function clHouse(stones){
+  const inH = stones.filter(s => !s.dead && Math.hypot(s.x - CL.TEE, s.y) <= CL.HR + s.r)
+    .map(s => ({ s, d:Math.hypot(s.x - CL.TEE, s.y) })).sort((a, b) => a.d - b.d);
+  if (!inH.length) return { team:-1, pts:0, list:[] };
+  const t = inH[0].s.team, list = [];
+  for (const e of inH) { if (e.s.team !== t) break; list.push(e.s); }
+  return { team:t, pts:list.length, list };
+}
+function clStone(team){
+  const b = fbBody(team, CL.HACK, 0);
+  Object.assign(b, { r:CL.R, curl:0, dead:false, fx:1, fy:0 });
+  return b;
+}
+
+// --- turn flow ---
+function clInit(){
+  game.state = 'play'; game.parts = []; game.texts = [];
+  cl.end = 1; cl.hammer = 1; cl.curl = [1, -1];
+  clStartEnd();
+}
+function clStartEnd(){
+  cl.stones = []; cl.thrown = [0, 0]; cl.counting = [];
+  game.players = cl.stones;
+  clStartTurn(1 - cl.hammer, true);
+}
+function clStartTurn(team, newEnd){
+  cl.cur = clStone(team); cl.stones.push(cl.cur);
+  Object.assign(cl, { turn:team, sub:'aim', aim:0, aim0:0, pull:0, wasDown:true, upWas:true, plan:null, aiT:0, drag:null, press:false, sweeping:false, still:0, moveT:0 });
+  const left = CL.STONES - cl.thrown[team];
+  if (newEnd) banner('END ' + cl.end, turnName(team), '#4dabf7');
+  else banner(turnName(team), left + (left > 1 ? ' stones left' : ' stone left'), COL[team].main);
+}
+function clCycleCurl(){
+  const c = cl.curl[cl.turn]; cl.curl[cl.turn] = c === 1 ? -1 : c === -1 ? 0 : 1;
+  tone(600, 760, .06, 'triangle', .08);
+}
+function clFire(){
+  const b = cl.cur, sp = clSpeed(Math.max(.02, cl.pull));
+  b.vx = Math.cos(cl.aim)*sp; b.vy = Math.sin(cl.aim)*sp; b.curl = cl.curl[cl.turn];
+  b.ox = b.oy = 0; cl.pull = 0; cl.sub = 'moving'; cl.moveT = 0; cl.still = 0;
+  sfx.dash(); buzz(15);
+}
+function clPredict(aim, pull, curl){
+  const b = { x:CL.HACK, y:0, vx:Math.cos(aim)*clSpeed(pull), vy:Math.sin(aim)*clSpeed(pull), r:CL.R, curl, team:0, dead:false };
+  const pts = [];
+  for (let s = 0; s < 900; s++) {
+    clStep([b], 1/60, null, true);
+    if (s % 5 === 0) pts.push([b.x, b.y]);
+    if (b.dead || (!b.vx && !b.vy)) break;
+  }
+  return { pts, x:b.x, y:b.y, dead:b.dead, short:!b.dead && b.x < CL.HOG };
+}
+function clAfterStop(){
+  for (const s of cl.stones) if (!s.dead && s.x < CL.HOG) {
+    s.dead = true; const [px, py] = fbRot(s.x, s.y); pop(px, py - 24, 'HOGGED!', '#fff', 26); burst(px, py, 8, '#d0ebff', 140, 'dot', 8);
+  }
+  cl.stones = cl.stones.filter(s => !s.dead); game.players = cl.stones;
+  cl.thrown[cl.turn]++;
+  if (cl.thrown[0] >= CL.STONES && cl.thrown[1] >= CL.STONES) return clScoreEnd();
+  const next = cl.thrown[1 - cl.turn] < CL.STONES ? 1 - cl.turn : cl.turn;
+  clStartTurn(next, false);
+}
+function clScoreEnd(){
+  const h = clHouse(cl.stones);
+  cl.counting = h.list; cl.sub = 'score'; cl.timer = 2.8;
+  if (h.team < 0) { banner('BLANK END', game.score[0] + ' - ' + game.score[1], '#ffe066'); tone(300, 200, .3, 'triangle', .1); }
+  else {
+    game.score[h.team] += h.pts; cl.scorer = h.team;
+    banner(nameOf(h.team) + ' +' + h.pts, game.score[0] + ' - ' + game.score[1], COL[h.team].main); sfx.point();
+    cl.hammer = 1 - h.team;               // the team that scored throws first next end
+    for (const s of h.list) { const [px, py] = fbRot(s.x, s.y); burst(px, py, 10, COL[h.team].main, 220, 'star', 9); }
+  }
+}
+// --- AI ---
+function clEval(B, team){
+  const h = clHouse(B);
+  let sc = h.team === team ? h.pts*100 : h.team >= 0 ? -h.pts*100 : 0;
+  const best = t => Math.min(400, ...B.filter(s => !s.dead && s.team === t).map(s => Math.hypot(s.x - CL.TEE, s.y)));
+  return sc + (best(1 - team) - best(team))*.3;
+}
+function clSim(team, aim, pull, curl){
+  const B = cl.stones.map(s => ({ ...s, trail:[] })), me = B[B.length - 1];
+  const sp = clSpeed(pull); me.vx = Math.cos(aim)*sp; me.vy = Math.sin(aim)*sp; me.curl = curl;
+  for (let s = 0; s < 1100; s++) { clStep(B, 1/120, null, true); if (s % 6 === 0 && B.every(b => b.dead || (!b.vx && !b.vy))) break; }
+  for (const b of B) if (!b.dead && b.x < CL.HOG) b.dead = true;
+  return clEval(B, team);
+}
+function clPlan(team){
+  const cfg = CL_AI[game.diff];
+  let best = null;
+  for (let k = 0; k < cfg.n; k++) {
+    const curl = [-1, 0, 1][Math.random()*3|0], aim = (Math.random()*2 - 1)*CL.AIM;
+    const pull = Math.random() < .7 ? .5 + Math.random()*.2 : .7 + Math.random()*.3;
+    const sc = clSim(team, aim, pull, curl);
+    if (!best || sc > best.sc) best = { aim, pull, curl, sc };
+  }
+  return { ang: Math.max(-CL.AIM, Math.min(CL.AIM, best.aim + (Math.random() - .5)*2*cfg.an)),
+           pow: Math.max(.02, Math.min(1, best.pull + (Math.random() - .5)*2*cfg.pn)), curl: best.curl };
+}
+function clUpdate(dt){
+  game.t += dt; updateFX(dt);
+  for (const d of cl.stones) { d.blink -= dt; if (d.blink < -.12) d.blink = 2 + Math.random()*3; d.hit = Math.max(0, d.hit - dt); }
+  if (game.paused || game.state === 'over') return;
+  const team = cl.turn, me = cl.cur;
+  if (cl.sub === 'aim') {
+    if (fbIsAI(team)) {
+      cl.aiT += dt;
+      if (!cl.plan && cl.aiT > .35) { cl.plan = clPlan(team); cl.curl[team] = cl.plan.curl; cl.aiT = .35; }
+      if (cl.plan) {
+        const k = Math.min(1, (cl.aiT - .35)/.7), e = k*k*(3 - 2*k);
+        cl.aim = cl.aim0 + (cl.plan.ang - cl.aim0)*e;
+        if (cl.aiT > .9) cl.pull = Math.min(cl.plan.pow, cl.pull + dt*1.1);
+        if (cl.aiT > 1.5 && cl.pull >= cl.plan.pow - 1e-6) clFire();
+      }
+    } else if (!cl.drag) {
+      const inp = slingInput(team);
+      if (inp.up && !cl.upWas && cl.pull < .02) clCycleCurl();
+      cl.upWas = inp.up;
+      cl.rotHold = inp.rot ? (cl.rotHold || 0) + dt : 0;
+      cl.aim = Math.max(-CL.AIM, Math.min(CL.AIM, cl.aim + inp.rot*(.12 + Math.min(1, cl.rotHold)*.35)*dt));
+      if (inp.down) cl.pull = Math.min(1, cl.pull + dt*.5);
+      if (inp.up && cl.pull > 0) cl.pull = Math.max(0, cl.pull - dt*1.2);
+      if (!inp.down && cl.wasDown && cl.pull > .02) { cl.wasDown = false; clFire(); }
+      else cl.wasDown = inp.down;
+    }
+    if (cl.sub === 'aim') {
+      me.ox = -Math.cos(cl.aim)*cl.pull*26; me.oy = -Math.sin(cl.aim)*cl.pull*26;
+      cl.pred = cl.pull > .01 ? clPredict(cl.aim, cl.pull, cl.curl[team]) : null;
+    }
+    return;
+  }
+  if (cl.sub === 'moving') {
+    const human = !fbIsAI(team);
+    cl.sweeping = human && !me.dead && (me.vx || me.vy) && (held[team].d || cl.press || (touchIn[team].on && touchIn[team].y > .38));
+    for (let k = 0; k < 3; k++) clStep(cl.stones, dt/3, cl.sweeping ? me : null, false);
+    if (cl.sweeping) {
+      cl.sweepT -= dt;
+      const sp = Math.hypot(me.vx, me.vy) || 1, [px, py] = fbRot(me.x + me.vx/sp*(me.r + 14), me.y + me.vy/sp*(me.r + 14));
+      if (Math.random() < .7) burst(px, py, 1, '#ffffff', 90, 'dot', 6);
+      if (cl.sweepT <= 0) { cl.sweepT = .16; noise(.08, .18, 3000, .7); }
+    }
+    for (const d of cl.stones) if (d.vx*d.vx + d.vy*d.vy > 420*420) d.trail.push({ x:d.x, y:d.y, r:d.r, life:.18 });
+    cl.moveT += dt;
+    cl.still = cl.stones.some(b => !b.dead && (b.vx || b.vy)) ? 0 : cl.still + dt;
+    if (cl.still > .3 || cl.moveT > 14) { cl.stones.forEach(b => { b.vx = b.vy = 0; }); cl.sweeping = false; clAfterStop(); }
+  } else if (cl.sub === 'score') {
+    cl.timer -= dt;
+    if (cl.timer <= 0) {
+      const w = game.score[0] >= game.target ? 0 : game.score[1] >= game.target ? 1 : -1;
+      if (w >= 0) matchOver(w); else { cl.end++; clStartEnd(); }
+    }
+  }
+}
+// --- touch / mouse: drag back to throw, tap the stone to change curl, hold anywhere to sweep ---
+const clHuman = () => game.curl && !game.demo && !game.paused && game.state === 'play' && !fbIsAI(cl.turn);
+C.addEventListener('pointerdown', e => {
+  if (!clHuman()) return;
+  if (cl.sub === 'moving') { cl.press = true; cl.pressId = e.pointerId; return; }
+  if (cl.sub !== 'aim') return;
+  const [wx, wy] = fbScreenToWorld(e.clientX, e.clientY);
+  cl.drag = { id:e.pointerId, sx:e.clientX, sy:e.clientY, t:performance.now(), onStone: Math.hypot(wx - cl.cur.x, wy - cl.cur.y) < CL.R*3.5, moved:false };
+  try { C.setPointerCapture(e.pointerId); } catch(_){}
+});
+C.addEventListener('pointermove', e => {
+  if (!cl.drag || e.pointerId !== cl.drag.id || !clHuman() || cl.sub !== 'aim') return;
+  const dx = e.clientX - cl.drag.sx, dy = e.clientY - cl.drag.sy, l = Math.hypot(dx, dy);
+  if (l < 10) { cl.pull = 0; return; }
+  cl.drag.moved = true;
+  const [vx, vy] = fb.vertical ? [-dy, dx] : [dx, dy];
+  if (-vx <= 0) { cl.pull = 0; return; }
+  cl.aim = Math.max(-CL.AIM, Math.min(CL.AIM, Math.atan2(-vy, -vx)));
+  cl.pull = Math.min(1, l/(Math.min(W, H)*.36));
+});
+const clDragEnd = e => {
+  if (cl.press && e.pointerId === cl.pressId) cl.press = false;
+  if (!cl.drag || e.pointerId !== cl.drag.id) return;
+  const d = cl.drag; cl.drag = null;
+  if (!clHuman() || cl.sub !== 'aim') return;
+  if (d.moved && cl.pull > .02) clFire();
+  else { cl.pull = 0; if (!d.moved && d.onStone && performance.now() - d.t < 400) clCycleCurl(); }
+};
+['pointerup','pointercancel'].forEach(t => C.addEventListener(t, clDragEnd));
+
+// --- drawing ---
+function clDrawSheet(){
+  const X0 = CL.X0, X1 = CL.X1, hw = CL.SW/2;
+  X.fillStyle = 'rgba(0,0,0,.15)'; rr(X0 - 14, -hw - 6, X1 - X0 + 28, CL.SW + 28, 26); X.fill();
+  X.fillStyle = '#f4fbff'; X.strokeStyle = '#2b2d42'; X.lineWidth = 7;
+  rr(X0 - 14, -hw - 14, X1 - X0 + 28, CL.SW + 28, 26); X.fill(); X.stroke();
+  X.fillStyle = 'rgba(160,200,230,.35)';
+  for (const [x, y, r] of clDecor) { X.beginPath(); X.arc(x, y, r, 0, TAU); X.fill(); }
+  X.strokeStyle = 'rgba(43,45,66,.18)'; X.lineWidth = 3;
+  X.beginPath(); X.moveTo(X0, 0); X.lineTo(X1, 0); X.stroke();
+  // house
+  const T = CL.TEE;
+  [[CL.HR, '#b197fc'], [80, '#ffffff'], [40, '#ffd43b'], [12, '#ffffff']].forEach(([r, c]) => {
+    X.fillStyle = c; X.strokeStyle = 'rgba(43,45,66,.45)'; X.lineWidth = 3; X.beginPath(); X.arc(T, 0, r, 0, TAU); X.fill(); X.stroke();
+  });
+  X.strokeStyle = 'rgba(43,45,66,.35)'; X.lineWidth = 3;
+  X.beginPath(); X.moveTo(T, -hw); X.lineTo(T, hw); X.stroke();
+  X.strokeStyle = '#2b2d42'; X.lineWidth = 4; X.beginPath(); X.moveTo(CL.BACK, -hw); X.lineTo(CL.BACK, hw); X.stroke();
+  X.strokeStyle = '#ff6b6b'; X.lineWidth = 7;
+  for (const x of [CL.HOG, -CL.HOG - 260]) { X.beginPath(); X.moveTo(x, -hw); X.lineTo(x, hw); X.stroke(); }
+  X.fillStyle = '#2b2d42'; rr(CL.HACK - 46, -16, 14, 32, 4); X.fill();
+  // stones still to throw, lined up beside the sheet
+  for (const t of [0, 1]) {
+    const left = CL.STONES - cl.thrown[t] - ((cl.sub === 'aim' || cl.sub === 'moving') && cl.turn === t ? 1 : 0);
+    for (let k = 0; k < left; k++) {
+      const x = X0 + 30 + k*52, y = (t === 0 ? 1 : -1)*(hw + 46);
+      X.fillStyle = 'rgba(0,0,0,.15)'; X.beginPath(); X.arc(x + 3, y + 5, CL.R, 0, TAU); X.fill();
+      X.fillStyle = COL[t].main; X.strokeStyle = '#2b2d42'; X.lineWidth = 4; X.beginPath(); X.arc(x, y, CL.R, 0, TAU); X.fill(); X.stroke();
+      X.fillStyle = 'rgba(255,255,255,.5)'; X.beginPath(); X.arc(x - 6, y - 7, 5, 0, TAU); X.fill();
+    }
+  }
+}
+function clDrawAim(){
+  if (game.state !== 'play' || cl.sub !== 'aim') return;
+  const d = cl.cur, c = COL[cl.turn], [px, py] = fbRot(d.x, d.y), a = cl.aim + fbRotOff(), dx = Math.cos(a), dy = Math.sin(a);
+  const p = cl.pred;
+  if (p) {
+    p.pts.forEach(([x, y], k) => { if (k % 2) return; const [sx, sy] = fbRot(x, y); X.globalAlpha = .75; X.fillStyle = '#fff'; X.strokeStyle = '#2b2d42'; X.lineWidth = 2.5; X.beginPath(); X.arc(sx, sy, 4.5, 0, TAU); X.fill(); X.stroke(); });
+    X.globalAlpha = 1;
+    const [gx, gy] = fbRot(p.x, p.y);
+    X.setLineDash([7, 6]); X.lineWidth = 4;
+    X.strokeStyle = p.dead ? '#e03131' : p.short ? '#868e96' : c.main;
+    X.beginPath(); X.arc(gx, gy, CL.R, 0, TAU); X.stroke(); X.setLineDash([]);
+    if (p.dead || p.short) { X.textAlign = 'center'; X.textBaseline = 'middle'; outlinedText(p.dead ? 'OUT' : 'SHORT', gx, gy - CL.R - 16, 18, p.dead ? '#ff8787' : '#dee2e6'); }
+  } else {
+    for (let s = d.r + 18, k = 0; s < 180; s += 22, k++) { X.globalAlpha = 1 - s/180*.8; X.fillStyle = '#fff'; X.strokeStyle = '#2b2d42'; X.lineWidth = 2.5; X.beginPath(); X.arc(px + dx*s, py + dy*s, 4.5, 0, TAU); X.fill(); X.stroke(); }
+    X.globalAlpha = 1;
+  }
+  // sling bands + power ring
+  const [ox, oy] = fbRot(d.ox, d.oy), nx = -dy, ny = dx, ar = d.r*1.35, bx = px + ox - dx*d.r*.85, by = py + oy - dy*d.r*.85;
+  for (const s of [-1, 1]) {
+    const qx = px + nx*ar*s, qy = py + ny*ar*s;
+    X.lineCap = 'round';
+    X.strokeStyle = '#2b2d42'; X.lineWidth = 9; X.beginPath(); X.moveTo(qx, qy); X.lineTo(bx, by); X.stroke();
+    X.strokeStyle = '#a0522d'; X.lineWidth = 4.5; X.beginPath(); X.moveTo(qx, qy); X.lineTo(bx, by); X.stroke();
+    X.fillStyle = '#c98b4a'; X.strokeStyle = '#2b2d42'; X.lineWidth = 3.5; X.beginPath(); X.arc(qx, qy, 8, 0, TAU); X.fill(); X.stroke();
+  }
+  X.strokeStyle = 'rgba(43,45,66,.25)'; X.lineWidth = 7; X.beginPath(); X.arc(px, py, d.r + 20, 0, TAU); X.stroke();
+  X.strokeStyle = '#ffe066'; X.lineWidth = 5; X.beginPath(); X.arc(px, py, d.r + 20, -Math.PI/2, -Math.PI/2 + TAU*cl.pull); X.stroke();
+  // curl badge
+  const curl = cl.curl[cl.turn], [lx, ly] = fbRot(0, 1), bxp = px + lx*(d.r + 44)*(curl || 1), byp = py + ly*(d.r + 44)*(curl || 1);
+  X.fillStyle = '#fffdf6'; X.strokeStyle = '#2b2d42'; X.lineWidth = 3; X.beginPath(); X.arc(bxp, byp, 15, 0, TAU); X.fill(); X.stroke();
+  X.strokeStyle = c.main; X.lineWidth = 4; X.lineCap = 'round';
+  if (curl) {
+    const ang = Math.atan2(ly*curl, lx*curl);
+    X.beginPath(); X.arc(bxp, byp, 8, ang - 2.2, ang + .9); X.stroke();
+    const ex = bxp + Math.cos(ang + .9)*8, ey = byp + Math.sin(ang + .9)*8;
+    X.beginPath(); X.arc(ex, ey, 2.5, 0, TAU); X.fillStyle = c.main; X.fill();
+  } else { X.beginPath(); X.moveTo(bxp - 7, byp); X.lineTo(bxp + 7, byp); X.stroke(); }
+  X.textAlign = 'center'; X.textBaseline = 'middle'; outlinedText('CURL', bxp, byp + 25, 12, '#fff');
+}
+function clRender(){
+  X.setTransform(DPR, 0, 0, DPR, 0, 0);
+  X.fillStyle = '#9fd8f5'; X.fillRect(0, 0, W, H);
+  X.fillStyle = '#ace0f8';
+  for (let x = -H; x < W; x += 60) { X.beginPath(); X.moveTo(x, 0); X.lineTo(x + 30, 0); X.lineTo(x + 30 + H, H); X.lineTo(x + H, H); X.fill(); }
+  const s = view.s, sh = game.shake, cx = view.cx + (Math.random() - .5)*sh, cy = view.cy + (Math.random() - .5)*sh;
+  if (fb.vertical) X.setTransform(0, -s*DPR, s*DPR, 0, cx*DPR, cy*DPR); else X.setTransform(s*DPR, 0, 0, s*DPR, cx*DPR, cy*DPR);
+  clDrawSheet();
+  X.setTransform(s*DPR, 0, 0, s*DPR, cx*DPR, cy*DPR);
+  if (cl.sub === 'score') for (const st of cl.counting) {
+    const [x, y] = fbRot(st.x, st.y);
+    X.strokeStyle = COL[st.team].main; X.lineWidth = 5; X.beginPath(); X.arc(x, y, st.r + 9 + Math.sin(game.t*8)*3, 0, TAU); X.stroke();
+  }
+  clDrawAim();
+  cl.stones.map(fbProxy).sort((a, b) => a.y - b.y).forEach(p => drawPlayer(p));
+  if (cl.sweeping) { const [x, y] = fbRot(cl.cur.x, cl.cur.y); X.textAlign = 'center'; X.textBaseline = 'middle'; outlinedText('SWEEP!', x, y - 44, 20, '#ffe066'); }
+  drawParts();
+  X.setTransform(DPR, 0, 0, DPR, 0, 0);
+  drawHUD();
+}
+
 // ---------- menu / UI ----------
 function seg(id, cb){
   const el = $(id);
@@ -1659,9 +1969,13 @@ seg('#laps', v => game.laps = v);
 seg('#mode', v => { game.modeSel = v; game.slingSel = v === 1; renderHelp(); });
 const pu = c => `<span class="pu" style="background:${c}"></span>`;
 function renderHelp(){
-$('.tag').textContent = ['Bump your rival off the island!', 'Bump your rival off the island!', 'Flick, pass and score!', 'Fling around the track. First to the finish!'][game.modeSel];
+$('.tag').textContent = ['Bump your rival off the island!', 'Bump your rival off the island!', 'Flick, pass and score!', 'Fling around the track. First to the finish!', 'Slide, curl and sweep to the button!'][game.modeSel];
 $('#lapsRow').style.display = game.modeSel === 3 ? '' : 'none';
 $('#tgtRow').style.display = game.modeSel === 3 ? 'none' : '';
+if (game.modeSel === 4) { $('#help').innerHTML = (isTouch
+  ? `<b>Curling!</b> 4 stones each per end, taking turns.<br><b>Drag back</b> to throw · <b>tap your stone</b> to change curl · <b>hold the screen</b> while it slides to sweep.`
+  : `<b>Curling!</b> 4 stones each per end, taking turns.<br><span class="r">P1</span>: <b>A</b>/<b>D</b> aim, <b>hold S</b> &amp; release to throw, <b>W</b> curl · <span class="bl">P2</span>: <b>←</b> <b>→</b> <b>↓</b> <b>↑</b><br>Hold <b>↓</b> / <b>S</b> while it slides to <b>sweep</b> (further, less curl)`)
+  + `<br>Closest stone to the centre scores a point for each of its stones nearer than the rival's best.`; return; }
 if (game.modeSel === 3) { $('#help').innerHTML = (isTouch
   ? `<b>Race!</b> Take turns flinging your blob around the track.<br><b>Drag back</b> anywhere and let go.`
   : `<b>Race!</b> Take turns flinging your blob around the track.<br><span class="r">P1</span>: <b>A</b>/<b>D</b> aim, <b>hold S</b> pull &amp; release, <b>W</b> eases off · <span class="bl">P2</span>: <b>←</b> <b>→</b> <b>↓</b> <b>↑</b> · or <b>drag back</b> with the mouse`)
@@ -1683,7 +1997,8 @@ let last = performance.now();
 function frame(now){
   const dt = Math.min(1/30, (now - last)/1000); last = now;
   if (game.fb && !game.demo) { fbUpdate(dt); fbRender(); }
-  else if (game.race && !game.demo) { rcUpdate(dt); rcRender(); } else { update(dt); render(); }
+  else if (game.race && !game.demo) { rcUpdate(dt); rcRender(); }
+  else if (game.curl && !game.demo) { clUpdate(dt); clRender(); } else { update(dt); render(); }
   requestAnimationFrame(frame);
 }
 layout(); startDemo();
