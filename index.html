@@ -43,8 +43,8 @@
   .seg button{border:0;background:transparent;font-weight:800;font-size:15px;padding:7px 12px;border-left:3px solid var(--ink)}
   .seg button:first-child{border-left:0}
   .seg button.on{background:var(--sun)}
-  .seg.wide{width:100%;margin:2px 0 10px;display:grid;grid-template-columns:repeat(6,1fr);gap:3px;background:var(--ink)}
-  .seg.wide button{border:0;background:#fff;grid-column:span 2;padding:9px 2px}
+  .seg.wide{width:100%;margin:2px 0 10px;display:grid;grid-template-columns:repeat(12,1fr);gap:3px;background:var(--ink)}
+  .seg.wide button{border:0;background:#fff;grid-column:span 3;padding:9px 2px} .seg.wide button:nth-child(n+5){grid-column:span 4}
   .seg.wide button.on{background:var(--sun)}
   @media (max-width:430px){ .seg button{padding:7px 8px;font-size:14px} .opt{font-size:15px} }
   .help{margin-top:12px;padding:10px 12px;background:#eaf8ff;border:3px dashed #9fd8f5;border-radius:16px;font-size:14px;
@@ -90,10 +90,11 @@
       <button class="big b1" id="play1">1 Player<small>vs CPU</small></button>
       <button class="big b2" id="play2">2 Players<small>same device</small></button>
     </div>
-    <div class="seg wide" id="mode"><button data-v="0" class="on">Real-time</button><button data-v="1">Slingshot</button><button data-v="2">Football</button><button data-v="3">Race</button><button data-v="4">Curling</button><button data-v="5">Golf</button></div>
+    <div class="seg wide" id="mode"><button data-v="0" class="on">Real-time</button><button data-v="1">Slingshot</button><button data-v="2">Football</button><button data-v="3">Race</button><button data-v="4">Curling</button><button data-v="5">Golf</button><button data-v="6">Siege</button></div>
     <div class="opt"><span>CPU level</span><div class="seg" id="diff"><button data-v="0">Easy</button><button data-v="1" class="on">Normal</button><button data-v="2">Hard</button></div></div>
     <div class="opt" id="lapsRow" style="display:none"><span>Laps</span><div class="seg" id="laps"><button data-v="1" class="on">1</button><button data-v="2">2</button><button data-v="3">3</button></div></div>
     <div class="opt" id="holesRow" style="display:none"><span>Holes</span><div class="seg" id="holes"><button data-v="3" class="on">3</button><button data-v="6">6</button><button data-v="9">9</button></div></div>
+    <div class="opt" id="hpRow" style="display:none"><span>King hearts</span><div class="seg" id="khp"><button data-v="2">2</button><button data-v="3" class="on">3</button><button data-v="5">5</button></div></div>
     <div class="opt" id="tgtRow"><span>First to</span><div class="seg" id="tgt"><button data-v="3" class="on">3</button><button data-v="5">5</button><button data-v="7">7</button></div></div>
     <div class="help" id="help"></div>
   </div>
@@ -153,7 +154,7 @@ let area = { x:0, y:0, w:0, h:0 };
 const game = {
   state:'countdown', demo:true, mode:1, diff:1, target:3, score:[0,0],
   R:BASE_R, time:0, timer:0, pending:null, t:0,
-  sling:false, slingSel:false, fb:false, race:false, curl:false, golf:false, holes:3, laps:1, modeSel:0, sub:'', turn:0, roundNo:0, Rtarget:BASE_R, still:0, moveT:0, turnCount:0,
+  sling:false, slingSel:false, fb:false, race:false, curl:false, golf:false, holes:3, siege:false, kingHP:3, laps:1, modeSel:0, sub:'', turn:0, roundNo:0, Rtarget:BASE_R, still:0, moveT:0, turnCount:0,
   players:[], powerups:[], parts:[], texts:[], shake:0, banner:null, nextPU:5, paused:false
 };
 
@@ -221,6 +222,7 @@ addEventListener('keydown', e => {
   if (m[1] === 'u' && !game.demo && !game.paused && game.state === 'play') {   // quick taps on ▲ never get lost
     if (game.curl && cl.sub === 'aim' && cl.turn === i && !fbIsAI(i) && cl.pull < .02) { clCycleCurl(); cl.upWas = true; }
     if (game.fb && fb.sub === 'aim' && fb.turn === i && !fbIsAI(i) && fb.pull < .02) { fbCycle(); fb.upWas = true; }
+    if (game.siege && sg.sub === 'aim' && sg.turn === i && !fbIsAI(i) && sg.pull < .02) sgCycleSpot();
   }
   const now = performance.now(), lt = lastTap[i];
   if (lt.k === m[1] && now - lt.t < 260) { requestDash(i); lt.t = 0; }
@@ -307,12 +309,12 @@ function layout(){
   area = { x:ax, y:ay, w:aw, h:ah };
   view.s = Math.min(aw, ah) / (2*(BASE_R + (isTouch ? 20 : 34)));
   view.cx = ax + aw/2; view.cy = ay + ah/2;
-  if ((game.fb || game.race || game.curl || game.golf) && !game.demo) {   // football / race: the field takes the whole screen
+  if ((game.fb || game.race || game.curl || game.golf || game.siege) && !game.demo) {   // football / race: the field takes the whole screen
     pads.forEach(p => p.style.display = 'none');
     fb.vertical = portrait;
     const tp = portrait ? 48 : 54, bt = portrait ? 48 : game.golf ? 32 : 6;
     area = { x:0, y:tp, w:W, h:H - tp - bt };
-    const lng = game.race ? RC.W + 50 : game.curl ? CL.X1 - CL.X0 + 130 : game.golf ? GL.W + 40 : FB.PL + 2*FB.GD + 80, sht = game.race ? RC.H + 50 : game.curl ? CL.SW + 170 : game.golf ? GL.H + 40 : FB.PW + 80;
+    const lng = game.race ? RC.W + 50 : game.curl ? CL.X1 - CL.X0 + 130 : game.golf ? GL.W + 40 : game.siege ? SG.W + 50 : FB.PL + 2*FB.GD + 80, sht = game.race ? RC.H + 50 : game.curl ? CL.SW + 170 : game.golf ? GL.H + 40 : game.siege ? SG.H + 50 : FB.PW + 80;
     view.s = portrait ? Math.min(area.h/lng, area.w/sht) : Math.min(area.w/lng, area.h/sht);
     view.cx = W/2; view.cy = area.y + area.h/2;
     Object.assign(ctrl.style, portrait && game.mode === 2 ? { left:'10px', right:'auto', top:'6px', flexDirection:'row', transform:'none' }
@@ -347,17 +349,17 @@ function startRound(){
   if (!game.demo) { banner('3'); sfx.beep(false); }
 }
 function startMatch(mode){
-  game.demo = false; game.mode = mode; game.score = [0,0]; game.paused = false; game.fb = game.modeSel === 2; game.race = game.modeSel === 3; game.curl = game.modeSel === 4; game.golf = game.modeSel === 5; game.sling = game.slingSel && !game.fb; game.roundNo = 0;
+  game.demo = false; game.mode = mode; game.score = [0,0]; game.paused = false; game.fb = game.modeSel === 2; game.race = game.modeSel === 3; game.curl = game.modeSel === 4; game.golf = game.modeSel === 5; game.siege = game.modeSel === 6; game.sling = game.slingSel && !game.fb; game.roundNo = 0;
   pads.forEach((el, i) => el.querySelector('.hint').textContent = 'P' + (i+1) + (game.sling ? ' · ←→ aim · hold ↓, let go' : ' · double-tap = DASH'));
   game.players = [makePlayer(0, false), makePlayer(1, mode === 1)];
   game.parts = []; game.texts = [];
   $('#menu').classList.add('hidden'); $('#over').classList.add('hidden'); $('#pause').classList.add('hidden');
   held.forEach(h => h.u = h.d = h.l = h.r = 0);
-  if (game.fb || game.race || game.curl || game.golf) { const el = document.documentElement; if (el.requestFullscreen && !document.fullscreenElement) el.requestFullscreen().catch(() => {}); }
-  layout(); if (game.fb) fbInit(); else if (game.race) rcInit(); else if (game.curl) clInit(); else if (game.golf) glInit(); else startRound();
+  if (game.fb || game.race || game.curl || game.golf || game.siege) { const el = document.documentElement; if (el.requestFullscreen && !document.fullscreenElement) el.requestFullscreen().catch(() => {}); }
+  layout(); if (game.fb) fbInit(); else if (game.race) rcInit(); else if (game.curl) clInit(); else if (game.golf) glInit(); else if (game.siege) sgInit(); else startRound();
 }
 function startDemo(){
-  game.demo = true; game.mode = 2; game.paused = false; game.sling = false; game.fb = false; game.race = false; game.curl = false; game.golf = false;
+  game.demo = true; game.mode = 2; game.paused = false; game.sling = false; game.fb = false; game.race = false; game.curl = false; game.golf = false; game.siege = false;
   game.players = [makePlayer(0, true), makePlayer(1, true)];
   $('#menu').classList.remove('hidden'); $('#over').classList.add('hidden'); $('#pause').classList.add('hidden');
   layout(); startRound();
@@ -727,7 +729,7 @@ function matchOver(w){
   t.textContent = (w === 0 && game.mode === 1) ? 'YOU WIN!' : (w === 1 && game.mode === 1) ? 'CPU WINS!' : nameOf(w) + ' WINS!';
   t.style.color = COL[w].main;
   t.style.webkitTextStroke = '3px #2b2d42'; t.style.paintOrder = 'stroke fill'; t.style.textShadow = '0 4px 0 #2b2d42';
-  $('#overSub').textContent = game.golf ? ('Strokes ' + gl.total[0] + ' – ' + gl.total[1] + ' over ' + game.holes + ' holes' + (game.mode === 1 && w === 1 ? ' · try again!' : ' · nice putting!')) : game.race ? (game.laps + (game.laps > 1 ? ' laps' : ' lap') + ' · ' + (game.mode === 1 && w === 1 ? 'try again!' : 'checkered flag!')) : 'Final score ' + game.score[0] + ' – ' + game.score[1] + (game.mode === 1 && w === 1 ? ' · try again!' : game.fb || game.curl ? ' · what a match!' : ' · splendid splashing!');
+  $('#overSub').textContent = game.siege ? ('The castle has fallen' + (game.mode === 1 && w === 1 ? ' · try again!' : '!')) : game.golf ? ('Strokes ' + gl.total[0] + ' – ' + gl.total[1] + ' over ' + game.holes + ' holes' + (game.mode === 1 && w === 1 ? ' · try again!' : ' · nice putting!')) : game.race ? (game.laps + (game.laps > 1 ? ' laps' : ' lap') + ' · ' + (game.mode === 1 && w === 1 ? 'try again!' : 'checkered flag!')) : 'Final score ' + game.score[0] + ' – ' + game.score[1] + (game.mode === 1 && w === 1 ? ' · try again!' : game.fb || game.curl ? ' · what a match!' : ' · splendid splashing!');
   setTimeout(() => { if (game.state === 'over') $('#over').classList.remove('hidden'); }, 700);
   layout();
 }
@@ -876,7 +878,7 @@ function drawPlayer(p){
     for (let k = 0; k < 3; k++) { const a = game.t*7 + k*TAU/3; star(p.x + Math.cos(a)*r*.7, p.y - r - 8 + Math.sin(a)*6, 7, '#ffe066'); }
   }
   // name tag
-  if (p.falling < 0 && !game.demo && !game.fb && !game.race && !game.curl && !game.golf) {
+  if (p.falling < 0 && !game.demo && !game.fb && !game.race && !game.curl && !game.golf && !game.siege) {
     const lbl = nameOf(p.i); X.font = `900 18px ${FONT}`; const w = X.measureText(lbl).width + 14;
     const ty = p.y - p.r - 30;
     X.fillStyle = c.main; X.strokeStyle = '#2b2d42'; X.lineWidth = 3; rr(p.x - w/2, ty - 12, w, 24, 10); X.fill(); X.stroke();
@@ -914,6 +916,7 @@ function drawParts(){
 function drawScoreBlock(i, alignRight){
   if (game.race) return drawRaceBlock(i, alignRight);
   if (game.golf) return drawGolfBlock(i, alignRight);
+  if (game.siege) return drawSiegeBlock(i, alignRight);
   const name = nameOf(i), c = COL[i], n = game.target;
   X.font = `900 20px ${FONT}`;
   const nw = X.measureText(name).width + 18, pip = 13, gap = 6, w = nw + 10 + n*(pip*2 + gap) + 8, h = 38;
@@ -934,8 +937,8 @@ function drawHUD(){
   if (game.demo) return;
   const two = game.mode === 2, hs = W < 520 ? .75 : 1;
   if (isTouch && portrait && two) {
-    X.save(); X.translate(10, game.fb || game.race || game.curl || game.golf ? H - 6 - 38*hs : area.y + area.h - 34*hs); X.scale(hs, hs); drawScoreBlock(0, false); X.restore();
-    X.save(); X.translate(W - 10, game.fb || game.race || game.curl || game.golf ? 6 + 38*hs : area.y + 34*hs); X.rotate(Math.PI); X.scale(hs, hs); drawScoreBlock(1, false); X.restore();
+    X.save(); X.translate(10, game.fb || game.race || game.curl || game.golf || game.siege ? H - 6 - 38*hs : area.y + area.h - 34*hs); X.scale(hs, hs); drawScoreBlock(0, false); X.restore();
+    X.save(); X.translate(W - 10, game.fb || game.race || game.curl || game.golf || game.siege ? 6 + 38*hs : area.y + 34*hs); X.rotate(Math.PI); X.scale(hs, hs); drawScoreBlock(1, false); X.restore();
   } else {
     X.save(); X.translate(10, 10); X.scale(hs, hs); drawScoreBlock(0, false); X.restore();
     X.save(); X.translate(W - 10, 10); X.scale(hs, hs); drawScoreBlock(1, true); X.restore();
@@ -2331,6 +2334,390 @@ function drawGolfBlock(i, alignRight){
   X.font = `900 16px ${FONT}`; X.fillStyle = '#2b2d42'; X.fillText(txt, x0 + nw + 10 + tw/2, h/2 + 1);
 }
 
+// ---------- siege mode (top-down castle smash) ----------
+// Canonical arena SG.W x SG.H centred on 0, blocks on a 40-unit grid. P1's castle on the left, P2's on the right.
+const SG = { W:1320, H:720, C:40, NX:33, NY:18, R:16, KR:26, MU:240, MUK:700, VMIN:200, VR:1100, E:.45, EW:.7 };
+const SG_AI = [ { n:20, an:.08, pn:.1 }, { n:60, an:.03, pn:.04 }, { n:150, an:.01, pn:.015 } ];
+const SG_LEFT = [
+  '..........', '..........', '..t.....t.', '.ssswwsss.', '.s......s.', '.w......ww', '.w......ww', '.s......ss', '.s....w.ss',
+  '.s....w.ss', '.s......ss', '.w......ww', '.w......ww', '.s......s.', '.ssswwsss.', '..t.....t.', '..........', '..........' ];
+const SG_MID = [[16, 4, 's'], [16, 8, 'w'], [16, 9, 'w'], [16, 13, 's'], [14, 6, 'w'], [18, 11, 'w']];
+const SG_TYPE = { w:1, s:2, t:3 }, SG_HP = [0, 1, 3, 1];
+const sg = { S:null, turn:0, sub:'aim', aim:0, aim0:0, pull:0, wasDown:true, plan:null, aiT:0, still:0, moveT:0, timer:0,
+             drag:null, spot:[1, 1], hearts:[3, 3], firstNext:0, winner:0, pred:null };
+const sgSpots = team => [-200, 0, 200].map(y => [team === 0 ? -200 : 200, y]);
+const sgIdx = (c, r) => r*SG.NX + c;
+const sgOwner = c => c <= 10 ? 0 : c >= 22 ? 1 : -1;
+
+function sgBuild(){
+  const T = new Uint8Array(SG.NX*SG.NY), HP = new Int8Array(SG.NX*SG.NY);
+  const put = (c, r, ch) => { const t = SG_TYPE[ch]; if (!t) return; T[sgIdx(c, r)] = t; HP[sgIdx(c, r)] = SG_HP[t]; };
+  SG_LEFT.forEach((row, r) => [...row].forEach((ch, c) => { put(c, r, ch); put(SG.NX - 1 - c, r, ch); }));
+  SG_MID.forEach(([c, r, ch]) => put(c, r, ch));
+  const king = team => Object.assign(fbBody(team, team === 0 ? -480 : 480, 0), { r:SG.KR, m:4, king:true, alive:true });
+  return { T, HP, ball:null, kings:[king(0), king(1)], boom:[], kingHit:[false, false], log:[] };
+}
+function sgClone(S){
+  return { T:S.T.slice(), HP:S.HP.slice(), ball:S.ball ? { ...S.ball, trail:[] } : null, kings:S.kings.map(k => ({ ...k, trail:[] })),
+           boom:S.boom.map(b => ({ ...b })), kingHit:[...S.kingHit], log:[] };
+}
+function sgHitKing(S, i, quiet){
+  if (S.kingHit[i]) return;
+  S.kingHit[i] = true;
+  if (quiet) return;
+  const k = S.kings[i]; k.hit = .6; k.stun = .8;
+  sg.hearts[i] = Math.max(0, sg.hearts[i] - 1);
+  const [px, py] = fbRot(k.x, k.y);
+  pop(px, py - 50, sg.hearts[i] ? 'OUCH!' : 'K.O.!', '#ff6b6b', 40); burst(px, py, 20, '#ffe066', 320, 'star', 11);
+  sfx.bump(1); tone(300, 90, .4, 'sawtooth', .1); buzz([40, 30, 60]); game.shake = Math.max(game.shake, 14);
+}
+function sgBreak(S, idx, quiet){
+  const t = S.T[idx]; S.T[idx] = 0; S.HP[idx] = 0; S.log.push(idx | (t << 12));
+  if (quiet) return;
+  const c = idx % SG.NX, r = (idx/SG.NX)|0, [px, py] = fbRot(-SG.W/2 + c*SG.C + 20, -SG.H/2 + r*SG.C + 20);
+  burst(px, py, 10, t === 1 ? '#d9a066' : '#adb5bd', 220, 'dot', 9);
+  noise(.12, .25, t === 1 ? 900 : 500, .8);
+  if (Math.random() < .3) pop(px, py - 16, ['CRASH!', 'CRUNCH!', 'SMASH!'][Math.random()*3|0], '#fff', 22);
+}
+function sgDamage(S, idx, dmg, quiet){
+  if (!S.T[idx]) return;
+  if (S.T[idx] === 3) { if (S.HP[idx] > 0) { S.HP[idx] = -1; S.boom.push({ idx, t:.12 }); } return; }
+  S.HP[idx] -= dmg;
+  if (S.HP[idx] <= 0) sgBreak(S, idx, quiet);
+  else if (!quiet) tone(180, 120, .06, 'square', .08);
+}
+function sgExplode(S, idx, quiet){
+  S.T[idx] = 0; S.HP[idx] = 0; S.log.push(idx | (3 << 12));
+  const c = idx % SG.NX, r = (idx/SG.NX)|0, ex = -SG.W/2 + c*SG.C + 20, ey = -SG.H/2 + r*SG.C + 20;
+  for (let dr = -3; dr <= 3; dr++) for (let dc = -3; dc <= 3; dc++) {
+    const C2 = c + dc, R2 = r + dr; if (C2 < 0 || R2 < 0 || C2 >= SG.NX || R2 >= SG.NY) continue;
+    const d = Math.hypot(dc, dr); if (d > 2.6) continue;
+    sgDamage(S, sgIdx(C2, R2), d < 1.6 ? 3 : 2, quiet);
+  }
+  for (const b of [S.ball, ...S.kings]) {
+    if (!b || b.alive === false) continue;
+    const dx = b.x - ex, dy = b.y - ey, d = Math.hypot(dx, dy) || 1;
+    if (d < 140) { const k = 650*(1 - d/140)/b.m; b.vx += dx/d*k; b.vy += dy/d*k; }
+    if (b.king && d < 125) sgHitKing(S, b.i, quiet);
+  }
+  if (quiet) return;
+  const [px, py] = fbRot(ex, ey);
+  burst(px, py, 30, '#ff922b', 460, 'star', 13); burst(px, py, 20, '#ffe066', 380, 'dot', 12);
+  game.parts.push({ x:px, y:py, vx:0, vy:0, life:0, max:.6, size:40, col:'#fff', kind:'ring' });
+  pop(px, py - 20, 'BOOM!', '#ff922b', 46);
+  noise(.7, .6, 300, .5); tone(120, 40, .5, 'sawtooth', .15); buzz(80); game.shake = 18;
+}
+function sgGrid(S, b, quiet){
+  const C = SG.C, ox = -SG.W/2, oy = -SG.H/2;
+  const c0 = Math.max(0, Math.floor((b.x - b.r - ox)/C)), c1 = Math.min(SG.NX - 1, Math.floor((b.x + b.r - ox)/C));
+  const r0 = Math.max(0, Math.floor((b.y - b.r - oy)/C)), r1 = Math.min(SG.NY - 1, Math.floor((b.y + b.r - oy)/C));
+  for (let r = r0; r <= r1; r++) for (let c = c0; c <= c1; c++) {
+    const idx = sgIdx(c, r); if (!S.T[idx]) continue;
+    const x0 = ox + c*C, y0 = oy + r*C, cx = Math.max(x0, Math.min(b.x, x0 + C)), cy = Math.max(y0, Math.min(b.y, y0 + C));
+    let dx = b.x - cx, dy = b.y - cy, d = Math.hypot(dx, dy);
+    if (d >= b.r) continue;
+    let nx, ny;
+    if (d > 0) { nx = dx/d; ny = dy/d; }
+    else { const l = b.x - x0, rr2 = x0 + C - b.x, t = b.y - y0, bt = y0 + C - b.y, m = Math.min(l, rr2, t, bt);
+      nx = m === l ? -1 : m === rr2 ? 1 : 0; ny = m === t ? -1 : m === bt ? 1 : 0; if (nx && ny) ny = 0; }
+    b.x = cx + nx*b.r; b.y = cy + ny*b.r;
+    const vn = -(b.vx*nx + b.vy*ny);
+    if (vn <= 0) continue;
+    if (b.king) { b.vx += (1 + .2)*vn*nx; b.vy += (1 + .2)*vn*ny; continue; }
+    const type = S.T[idx];
+    if (type === 3 && vn > 120) { sgDamage(S, idx, 1, quiet); b.vx += 1.45*vn*nx; b.vy += 1.45*vn*ny; continue; }
+    if (vn > 140) {
+      sgDamage(S, idx, 1 + Math.floor((vn - 140)/260), quiet);
+      if (!S.T[idx]) { b.vx += nx*vn*.55; b.vy += ny*vn*.55; continue; }    // smashed through, lost some speed
+    }
+    b.vx += (1 + SG.E)*vn*nx; b.vy += (1 + SG.E)*vn*ny;
+    if (!quiet && vn > 60) tone(220, 140, .05, 'triangle', Math.min(.12, vn/5000));
+  }
+}
+function sgStep(S, dt, quiet){
+  for (const b of [S.ball, ...S.kings]) {
+    if (!b || b.alive === false) continue;
+    const sp = Math.hypot(b.vx, b.vy);
+    if (sp > 0) { const ns = Math.max(0, sp - (b.king ? SG.MUK : SG.MU)*dt); if (ns < 5) { b.vx = 0; b.vy = 0; } else { b.vx *= ns/sp; b.vy *= ns/sp; } }
+    b.x += b.vx*dt; b.y += b.vy*dt;
+    if (!b.king) b.spin += sp*dt/b.r;
+    const hx = SG.W/2 - b.r, hy = SG.H/2 - b.r;
+    if (Math.abs(b.x) > hx) { b.x = Math.sign(b.x)*hx; b.vx = -b.vx*SG.EW; }
+    if (Math.abs(b.y) > hy) { b.y = Math.sign(b.y)*hy; b.vy = -b.vy*SG.EW; }
+    sgGrid(S, b, quiet);
+  }
+  const ball = S.ball;
+  if (ball && ball.alive) for (const k of S.kings) {
+    const dx = k.x - ball.x, dy = k.y - ball.y, d = Math.hypot(dx, dy), min = k.r + ball.r;
+    if (d >= min || d === 0) continue;
+    const nx = dx/d, ny = dy/d, ov = min - d, tm = ball.m + k.m;
+    ball.x -= nx*ov*k.m/tm; ball.y -= ny*ov*k.m/tm; k.x += nx*ov*ball.m/tm; k.y += ny*ov*ball.m/tm;
+    const rv = (ball.vx - k.vx)*nx + (ball.vy - k.vy)*ny;
+    if (rv <= 0) continue;
+    if (rv > 150) sgHitKing(S, k.i, quiet);
+    const j = (1 + .5)*rv/(1/ball.m + 1/k.m);
+    ball.vx -= j*nx/ball.m; ball.vy -= j*ny/ball.m; k.vx += j*nx/k.m; k.vy += j*ny/k.m;
+  }
+  for (const bm of S.boom) { bm.t -= dt; if (bm.t <= 0 && !bm.done) { bm.done = true; sgExplode(S, bm.idx, quiet); } }
+  S.boom = S.boom.filter(b => !b.done);
+  if (ball && ball.alive && !ball.vx && !ball.vy) ball.alive = false;
+}
+const sgSettled = S => !(S.ball && S.ball.alive) && !S.boom.length && S.kings.every(k => !k.vx && !k.vy);
+
+// --- flow ---
+function sgInit(){
+  game.state = 'play'; game.parts = []; game.texts = [];
+  sg.S = sgBuild(); sg.hearts = [game.kingHP, game.kingHP]; sg.spot = [1, 1];
+  game.players = sg.S.kings;
+  const first = sg.firstNext; sg.firstNext = 1 - sg.firstNext;
+  sgStartTurn(first);
+  banner('SIEGE!', turnName(first), '#ffe066');
+}
+function sgPlaceBall(){
+  const [x, y] = sgSpots(sg.turn)[sg.spot[sg.turn]];
+  sg.S.ball = Object.assign(fbBody(-1, x, y), { r:SG.R, m:3, alive:false, cannon:true });
+  const k = sg.S.kings[1 - sg.turn];
+  sg.aim = sg.aim0 = Math.atan2(k.y - y, k.x - x);
+}
+function sgStartTurn(team){
+  Object.assign(sg, { turn:team, sub:'aim', pull:0, wasDown:true, plan:null, aiT:0, drag:null, still:0, moveT:0, pred:null });
+  sg.S.kingHit = [false, false];
+  sgPlaceBall();
+  banner(turnName(team), null, COL[team].main);
+}
+function sgCycleSpot(to){
+  sg.spot[sg.turn] = to === undefined ? (sg.spot[sg.turn] + 1) % 3 : to;
+  sgPlaceBall(); tone(600, 760, .06, 'triangle', .08);
+}
+function sgFire(){
+  const b = sg.S.ball, sp = SG.VMIN + Math.max(.02, sg.pull)*SG.VR;
+  b.alive = true; b.vx = Math.cos(sg.aim)*sp; b.vy = Math.sin(sg.aim)*sp;
+  sg.pull = 0; sg.pred = null; sg.sub = 'moving'; sg.moveT = 0; sg.still = 0;
+  noise(.25, .5, 400, .6); tone(160, 60, .25, 'square', .14); buzz(25); game.shake = 6;
+  const [px, py] = fbRot(b.x, b.y); burst(px, py, 12, '#dee2e6', 200, 'dot', 11);
+}
+function sgEndShot(){
+  sg.S.ball = null;
+  const dead = [0, 1].filter(i => sg.hearts[i] <= 0);
+  if (dead.length) {
+    const w = dead.length === 2 ? 1 - sg.turn : 1 - dead[0];
+    sg.winner = w; sg.sub = 'done'; sg.timer = 1.8;
+    banner('VICTORY!', nameOf(w) + ' takes the castle', COL[w].main); sfx.point();
+    return;
+  }
+  sgStartTurn(1 - sg.turn);
+}
+// --- AI ---
+function sgSim(team, spot, ang, pow){
+  const S = sgClone(sg.S), [x, y] = sgSpots(team)[spot], sp = SG.VMIN + pow*SG.VR;
+  S.ball = Object.assign({ ...S.ball }, { x, y, alive:true, vx:Math.cos(ang)*sp, vy:Math.sin(ang)*sp });
+  for (let s = 0; s < 1700 && !sgSettled(S); s++) sgStep(S, 1/240, true);
+  const foe = 1 - team, ek = S.kings[foe];
+  let sc = 0;
+  if (S.kingHit[foe]) sc += sg.hearts[foe] <= 1 ? 1e5 : 1000;
+  if (S.kingHit[team]) sc -= sg.hearts[team] <= 1 ? 2e5 : 1500;
+  for (const e of S.log) {
+    const idx = e & 4095, t = e >> 12, c = idx % SG.NX, r = (idx/SG.NX)|0, own = sgOwner(c);
+    const val = t === 2 ? 30 : t === 1 ? 15 : 10;
+    const cx = -SG.W/2 + c*SG.C + 20, cy = -SG.H/2 + r*SG.C + 20, near = Math.hypot(cx - ek.x, cy - ek.y) < 170 ? 2 : 1;
+    sc += own === foe ? val*near : own === team ? -val*1.2 : 2;
+  }
+  return sc;
+}
+function sgPlan(team){
+  const cfg = SG_AI[game.diff], ek = sg.S.kings[1 - team];
+  let best = null;
+  for (let k = 0; k < cfg.n; k++) {
+    const spot = Math.random()*3|0, [x, y] = sgSpots(team)[spot];
+    const ang = Math.random() < .75 ? Math.atan2(ek.y - y, ek.x - x) + (Math.random() - .5)*1.1 : Math.random()*TAU;
+    const pow = .35 + Math.random()*.65, sc = sgSim(team, spot, ang, pow);
+    if (!best || sc > best.sc) best = { spot, ang, pow, sc };
+  }
+  return { spot: best.spot, ang: best.ang + (Math.random() - .5)*2*cfg.an, pow: Math.max(.1, Math.min(1, best.pow + (Math.random() - .5)*2*cfg.pn)) };
+}
+function sgPredict(){
+  const S = sgClone(sg.S), b = S.ball, sp = SG.VMIN + Math.max(.02, sg.pull)*SG.VR;
+  b.alive = true; b.vx = Math.cos(sg.aim)*sp; b.vy = Math.sin(sg.aim)*sp;
+  const pts = []; let len = 0, px = b.x, py = b.y;
+  for (let s = 0; s < 600 && len < 340 && b.alive; s++) {
+    sgStep(S, 1/180, true);
+    len += Math.hypot(b.x - px, b.y - py); px = b.x; py = b.y;
+    if (s % 3 === 0) pts.push([b.x, b.y]);
+    if (S.log.length) break;                      // stop the preview at the first thing it breaks
+  }
+  return pts;
+}
+function sgUpdate(dt){
+  game.t += dt; updateFX(dt);
+  for (const d of sg.S.kings) { d.blink -= dt; if (d.blink < -.12) d.blink = 2 + Math.random()*3; d.hit = Math.max(0, d.hit - dt); d.stun -= dt; }
+  if (game.paused || game.state === 'over') return;
+  const team = sg.turn;
+  if (sg.sub === 'aim') {
+    if (fbIsAI(team)) {
+      sg.aiT += dt;
+      if (!sg.plan && sg.aiT > .35) { sg.plan = sgPlan(team); if (sg.plan.spot !== sg.spot[team]) sgCycleSpot(sg.plan.spot); sg.aim0 = sg.aim; sg.aiT = .35; }
+      if (sg.plan) {
+        const k = Math.min(1, (sg.aiT - .35)/.7), e = k*k*(3 - 2*k);
+        let dd = sg.plan.ang - sg.aim0; dd = Math.atan2(Math.sin(dd), Math.cos(dd));
+        sg.aim = sg.aim0 + dd*e;
+        if (sg.aiT > .9) sg.pull = Math.min(sg.plan.pow, sg.pull + dt*1.2);
+        if (sg.aiT > 1.45 && sg.pull >= sg.plan.pow - 1e-6) sgFire();
+      }
+    } else if (!sg.drag) {
+      const inp = slingInput(team);
+      sg.rotHold = inp.rot ? (sg.rotHold || 0) + dt : 0;
+      sg.aim += inp.rot*(.5 + Math.min(1, sg.rotHold)*1.8)*dt;
+      if (inp.down) sg.pull = Math.min(1, sg.pull + dt*.8);
+      if (!inp.down && sg.wasDown && sg.pull > .02) { sg.wasDown = false; sgFire(); }
+      else sg.wasDown = inp.down;
+    }
+    if (sg.sub === 'aim') sg.pred = sgPredict();
+    return;
+  }
+  if (sg.sub === 'moving') {
+    for (let k = 0; k < 6; k++) sgStep(sg.S, dt/6, false);
+    const b = sg.S.ball;
+    if (b && b.alive && b.vx*b.vx + b.vy*b.vy > 450*450) b.trail.push({ x:b.x, y:b.y, r:b.r, life:.15 });
+    if (b) { b.trail.forEach(s => s.life -= dt); b.trail = b.trail.filter(s => s.life > 0); }
+    sg.moveT += dt;
+    sg.still = sgSettled(sg.S) ? sg.still + dt : 0;
+    if (sg.still > .35 || sg.moveT > 10) sgEndShot();
+  } else if (sg.sub === 'done') {
+    sg.timer -= dt;
+    if (sg.timer <= 0) matchOver(sg.winner);
+  }
+}
+// --- touch / mouse: tap a firing spot, drag back to fire ---
+const sgHuman = () => game.siege && !game.demo && !game.paused && game.state === 'play' && sg.sub === 'aim' && !fbIsAI(sg.turn);
+C.addEventListener('pointerdown', e => {
+  if (!sgHuman()) return;
+  const [wx, wy] = fbScreenToWorld(e.clientX, e.clientY);
+  const spots = sgSpots(sg.turn), hit = spots.findIndex(([x, y]) => Math.hypot(wx - x, wy - y) < 55);
+  if (hit >= 0 && hit !== sg.spot[sg.turn]) { sgCycleSpot(hit); return; }
+  sg.drag = { id:e.pointerId, sx:e.clientX, sy:e.clientY };
+  try { C.setPointerCapture(e.pointerId); } catch(_){}
+});
+C.addEventListener('pointermove', e => {
+  if (!sg.drag || e.pointerId !== sg.drag.id || !sgHuman()) return;
+  const dx = e.clientX - sg.drag.sx, dy = e.clientY - sg.drag.sy, l = Math.hypot(dx, dy);
+  if (l < 10) { sg.pull = 0; return; }
+  const [vx, vy] = fb.vertical ? [-dy, dx] : [dx, dy];
+  sg.aim = Math.atan2(-vy, -vx); sg.pull = Math.min(1, l/(Math.min(W, H)*.34));
+});
+const sgDragEnd = e => {
+  if (!sg.drag || e.pointerId !== sg.drag.id) return;
+  sg.drag = null;
+  if (sgHuman() && sg.pull > .02) sgFire(); else sg.pull = 0;
+};
+['pointerup','pointercancel'].forEach(t => C.addEventListener(t, sgDragEnd));
+
+// --- drawing ---
+function sgDrawWorld(){
+  const hw = SG.W/2, hh = SG.H/2, C = SG.C, S = sg.S;
+  X.fillStyle = 'rgba(0,0,0,.16)'; rr(-hw - 18, -hh - 10, SG.W + 36, SG.H + 36, 30); X.fill();
+  X.fillStyle = '#86cf63'; X.strokeStyle = '#2b2d42'; X.lineWidth = 7; rr(-hw - 18, -hh - 18, SG.W + 36, SG.H + 36, 30); X.fill(); X.stroke();
+  X.fillStyle = '#93d870';
+  for (let x = -hw; x < hw; x += 120) X.fillRect(x, -hh, 60, SG.H);
+  // courtyards
+  for (const s of [-1, 1]) {
+    const x0 = s < 0 ? -hw + C*.5 : hw - C*10.5;
+    X.fillStyle = '#e3d8c3'; X.strokeStyle = 'rgba(43,45,66,.25)'; X.lineWidth = 3;
+    rr(x0, -hh + C*1.5, C*10, C*15, 18); X.fill(); X.stroke();
+    X.fillStyle = 'rgba(150,120,80,.18)';
+    for (let r = 2; r < 16; r++) for (let c = 0; c < 10; c++) if ((r + c) % 2) X.fillRect(x0 + c*C + 4, -hh + r*C - 16, C - 8, C - 8);
+  }
+  // firing spots of the current shooter
+  if (game.state === 'play' && sg.sub === 'aim') sgSpots(sg.turn).forEach(([x, y], k) => {
+    X.strokeStyle = COL[sg.turn].main; X.lineWidth = 4; X.setLineDash([8, 7]); X.lineDashOffset = -game.t*20;
+    X.globalAlpha = k === sg.spot[sg.turn] ? 1 : .6; X.beginPath(); X.arc(x, y, 30, 0, TAU); X.stroke(); X.setLineDash([]); X.globalAlpha = 1;
+  });
+  // blocks
+  for (let r = 0; r < SG.NY; r++) for (let c = 0; c < SG.NX; c++) {
+    const idx = sgIdx(c, r), t = S.T[idx]; if (!t) continue;
+    const x = -hw + c*C, y = -hh + r*C, hp = S.HP[idx];
+    X.fillStyle = 'rgba(0,0,0,.18)'; X.fillRect(x + 3, y + 6, C, C);
+    if (t === 1) {
+      X.fillStyle = '#d9a066'; X.fillRect(x, y, C, C);
+      X.strokeStyle = 'rgba(120,70,30,.45)'; X.lineWidth = 2;
+      for (let k = 1; k < 3; k++) { X.beginPath(); X.moveTo(x + 4, y + k*C/3); X.lineTo(x + C - 4, y + k*C/3); X.stroke(); }
+    } else if (t === 2) {
+      X.fillStyle = hp >= 3 ? '#ced4da' : hp === 2 ? '#adb5bd' : '#8d959d'; X.fillRect(x, y, C, C);
+      X.strokeStyle = 'rgba(43,45,66,.25)'; X.lineWidth = 2;
+      X.beginPath(); X.moveTo(x, y + C/2); X.lineTo(x + C, y + C/2); X.moveTo(x + C/2, y); X.lineTo(x + C/2, y + C/2); X.moveTo(x + C/4, y + C/2); X.lineTo(x + C/4, y + C); X.stroke();
+      if (hp < 3) { X.strokeStyle = '#2b2d42'; X.lineWidth = 2.5; X.beginPath(); X.moveTo(x + 8, y + 6); X.lineTo(x + 18, y + 18); X.lineTo(x + 14, y + 26); if (hp < 2) { X.moveTo(x + 32, y + 10); X.lineTo(x + 24, y + 22); X.lineTo(x + 30, y + 34); } X.stroke(); }
+    } else {
+      const pulse = hp < 0 ? (Math.sin(game.t*60) > 0 ? '#fff' : '#e03131') : '#e03131';
+      X.fillStyle = pulse; X.fillRect(x, y, C, C);
+      X.fillStyle = '#ffe066'; X.fillRect(x, y + C*.38, C, C*.24);
+      X.strokeStyle = '#2b2d42'; X.lineWidth = 2.5; X.beginPath(); X.moveTo(x + C/2, y + 4); X.lineTo(x + C/2 + 5, y - 6); X.stroke();
+      X.fillStyle = '#ffd43b'; X.beginPath(); X.arc(x + C/2 + 6, y - 7, 3, 0, TAU); X.fill();
+    }
+    X.strokeStyle = '#2b2d42'; X.lineWidth = 3; X.strokeRect(x + 1.5, y + 1.5, C - 3, C - 3);
+  }
+}
+function sgDrawBall(p){
+  const r = p.r;
+  X.fillStyle = 'rgba(0,0,0,.25)'; X.beginPath(); X.ellipse(p.x, p.y + r*.6, r*.95, r*.4, 0, 0, TAU); X.fill();
+  for (const s of p.trail) { X.globalAlpha = s.life/.15*.3; X.fillStyle = '#495057'; X.beginPath(); X.arc(s.x, s.y, r*.9, 0, TAU); X.fill(); }
+  X.globalAlpha = 1;
+  X.fillStyle = '#343a40'; X.strokeStyle = '#1b1d2a'; X.lineWidth = 4; X.beginPath(); X.arc(p.x, p.y, r, 0, TAU); X.fill(); X.stroke();
+  X.fillStyle = 'rgba(255,255,255,.45)'; X.beginPath(); X.ellipse(p.x - r*.35, p.y - r*.4, r*.3, r*.18, -.6, 0, TAU); X.fill();
+}
+function sgDrawCrown(p){
+  const x = p.x, y = p.y - p.r - 4, w = p.r*.9;
+  X.fillStyle = '#ffd43b'; X.strokeStyle = '#2b2d42'; X.lineWidth = 3; X.lineJoin = 'round';
+  X.beginPath(); X.moveTo(x - w, y); X.lineTo(x - w, y - 16); X.lineTo(x - w/2, y - 7); X.lineTo(x, y - 20); X.lineTo(x + w/2, y - 7); X.lineTo(x + w, y - 16); X.lineTo(x + w, y); X.closePath(); X.fill(); X.stroke();
+  X.fillStyle = '#ff6b6b'; X.beginPath(); X.arc(x, y - 6, 3, 0, TAU); X.fill();
+}
+function sgDrawAim(){
+  if (game.state !== 'play' || sg.sub !== 'aim' || !sg.S.ball) return;
+  const b = sg.S.ball, [px, py] = fbRot(b.x, b.y), a = sg.aim + fbRotOff(), dx = Math.cos(a), dy = Math.sin(a);
+  if (sg.pred) sg.pred.forEach(([x, y], k) => { if (k % 2) return; const [sx, sy] = fbRot(x, y); X.globalAlpha = Math.max(.15, 1 - k/sg.pred.length); X.fillStyle = '#fff'; X.strokeStyle = '#2b2d42'; X.lineWidth = 2; X.beginPath(); X.arc(sx, sy, 4.5, 0, TAU); X.fill(); X.stroke(); });
+  X.globalAlpha = 1;
+  const off = sg.pull*30, bx = px - dx*off - dx*b.r*.8, by = py - dy*off - dy*b.r*.8, nx = -dy, ny = dx, ar = b.r*2;
+  for (const s of [-1, 1]) {
+    const qx = px + nx*ar*s, qy = py + ny*ar*s;
+    X.lineCap = 'round';
+    X.strokeStyle = '#2b2d42'; X.lineWidth = 9; X.beginPath(); X.moveTo(qx, qy); X.lineTo(bx, by); X.stroke();
+    X.strokeStyle = '#a0522d'; X.lineWidth = 4.5; X.beginPath(); X.moveTo(qx, qy); X.lineTo(bx, by); X.stroke();
+    X.fillStyle = '#c98b4a'; X.strokeStyle = '#2b2d42'; X.lineWidth = 3.5; X.beginPath(); X.arc(qx, qy, 9, 0, TAU); X.fill(); X.stroke();
+  }
+  X.strokeStyle = 'rgba(43,45,66,.25)'; X.lineWidth = 7; X.beginPath(); X.arc(px, py, b.r + 22, 0, TAU); X.stroke();
+  X.strokeStyle = sg.pull > .85 ? '#ff6b6b' : '#ffe066'; X.lineWidth = 5; X.beginPath(); X.arc(px, py, b.r + 22, -Math.PI/2, -Math.PI/2 + TAU*sg.pull); X.stroke();
+  return [-dx*off, -dy*off];
+}
+function sgRender(){
+  X.setTransform(DPR, 0, 0, DPR, 0, 0);
+  X.fillStyle = '#5fb346'; X.fillRect(0, 0, W, H);
+  X.fillStyle = '#67bb4d';
+  for (let x = -H; x < W; x += 60) { X.beginPath(); X.moveTo(x, 0); X.lineTo(x + 30, 0); X.lineTo(x + 30 + H, H); X.lineTo(x + H, H); X.fill(); }
+  const s = view.s, sh = game.shake, cx = view.cx + (Math.random() - .5)*sh, cy = view.cy + (Math.random() - .5)*sh;
+  if (fb.vertical) X.setTransform(0, -s*DPR, s*DPR, 0, cx*DPR, cy*DPR); else X.setTransform(s*DPR, 0, 0, s*DPR, cx*DPR, cy*DPR);
+  sgDrawWorld();
+  X.setTransform(s*DPR, 0, 0, s*DPR, cx*DPR, cy*DPR);
+  const off = sgDrawAim() || [0, 0];
+  for (const k of sg.S.kings.map(fbProxy).sort((a, b) => a.y - b.y)) { drawPlayer(k); sgDrawCrown(k); }
+  if (sg.S.ball) { const p = fbProxy(sg.S.ball); p.x += off[0]; p.y += off[1]; sgDrawBall(p); }
+  drawParts();
+  X.setTransform(DPR, 0, 0, DPR, 0, 0);
+  drawHUD();
+}
+function drawSiegeBlock(i, alignRight){
+  const name = nameOf(i), c = COL[i], n = game.kingHP;
+  X.font = `900 20px ${FONT}`;
+  const nw = X.measureText(name).width + 18, hs = 24, w = nw + 12 + n*hs + 8, h = 38, x0 = alignRight ? -w : 0;
+  X.strokeStyle = '#2b2d42'; X.lineWidth = 3.5;
+  rr(x0, 3, w, h, 19); X.fillStyle = '#2b2d42'; X.fill();
+  rr(x0, 0, w, h, 19); X.fillStyle = '#fffdf6'; X.fill(); X.stroke();
+  rr(x0 + 4, 4, nw, h - 8, 15); X.fillStyle = c.main; X.fill();
+  X.textAlign = 'center'; X.textBaseline = 'middle'; X.fillStyle = '#fff'; X.fillText(name, x0 + 4 + nw/2, h/2 + 1);
+  for (let k = 0; k < n; k++) {
+    const x = x0 + nw + 14 + k*hs + hs/2 - 2, y = h/2 + 1, full = k < sg.hearts[i];
+    X.fillStyle = full ? '#ff6b6b' : '#e9ecef'; X.strokeStyle = '#2b2d42'; X.lineWidth = 2.5;
+    X.beginPath(); X.moveTo(x, y + 8); X.bezierCurveTo(x - 14, y - 2, x - 7, y - 12, x, y - 5); X.bezierCurveTo(x + 7, y - 12, x + 14, y - 2, x, y + 8); X.closePath(); X.fill(); X.stroke();
+  }
+}
+
 // ---------- menu / UI ----------
 function seg(id, cb){
   const el = $(id);
@@ -2354,12 +2741,18 @@ document.addEventListener('visibilitychange', () => { if (document.hidden && !ga
 
 seg('#laps', v => game.laps = v);
 seg('#holes', v => game.holes = v);
+seg('#khp', v => game.kingHP = v);
 seg('#mode', v => { game.modeSel = v; game.slingSel = v === 1; renderHelp(); });
 const pu = c => `<span class="pu" style="background:${c}"></span>`;
 function renderHelp(){
-$('.tag').textContent = ['Bump your rival off the island!', 'Bump your rival off the island!', 'Flick, pass and score!', 'Fling around the track. First to the finish!', 'Slide, curl and sweep to the button!', 'Fewest strokes wins. Mind the water!'][game.modeSel];
+$('.tag').textContent = ['Bump your rival off the island!', 'Bump your rival off the island!', 'Flick, pass and score!', 'Fling around the track. First to the finish!', 'Slide, curl and sweep to the button!', 'Fewest strokes wins. Mind the water!', 'Smash the castle, bonk the king!'][game.modeSel];
 $('#lapsRow').style.display = game.modeSel === 3 ? '' : 'none';
-$('#tgtRow').style.display = game.modeSel === 3 || game.modeSel === 5 ? 'none' : '';
+$('#tgtRow').style.display = game.modeSel === 3 || game.modeSel >= 5 ? 'none' : '';
+$('#hpRow').style.display = game.modeSel === 6 ? '' : 'none';
+if (game.modeSel === 6) { $('#holesRow').style.display = 'none'; $('#help').innerHTML = (isTouch
+  ? `<b>Siege!</b> Take turns firing cannonballs at the rival castle.<br><b>Tap a firing spot</b> to move · <b>drag back</b> to fire.`
+  : `<b>Siege!</b> Take turns firing cannonballs at the rival castle.<br><span class="r">P1</span>: <b>A</b>/<b>D</b> aim, <b>hold S</b> &amp; release to fire, <b>W</b> next firing spot · <span class="bl">P2</span>: <b>←</b> <b>→</b> <b>↓</b> <b>↑</b> · or <b>drag back</b>`)
+  + `<br>Wood breaks in one hit, stone takes three, <b>TNT</b> explodes! Hit the enemy king to take a heart.`; return; }
 $('#holesRow').style.display = game.modeSel === 5 ? '' : 'none';
 if (game.modeSel === 5) { $('#help').innerHTML = (isTouch
   ? `<b>Mini-golf!</b> Sink your ball in the fewest strokes.<br><b>Drag back</b> anywhere and let go.`
@@ -2392,7 +2785,8 @@ function frame(now){
   if (game.fb && !game.demo) { fbUpdate(dt); fbRender(); }
   else if (game.race && !game.demo) { rcUpdate(dt); rcRender(); }
   else if (game.curl && !game.demo) { clUpdate(dt); clRender(); }
-  else if (game.golf && !game.demo) { glUpdate(dt); glRender(); } else { update(dt); render(); }
+  else if (game.golf && !game.demo) { glUpdate(dt); glRender(); }
+  else if (game.siege && !game.demo) { sgUpdate(dt); sgRender(); } else { update(dt); render(); }
   requestAnimationFrame(frame);
 }
 layout(); startDemo();
