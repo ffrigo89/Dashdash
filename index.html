@@ -92,11 +92,15 @@
     </div>
     <div class="seg wide" id="mode"><button data-v="0" class="on">Real-time</button><button data-v="1">Slingshot</button><button data-v="2">Football</button><button data-v="3">Race</button><button data-v="4">Curling</button><button data-v="5">Golf</button><button data-v="6">Siege</button><button data-v="7">Hill</button></div>
     <div class="opt"><span>CPU level</span><div class="seg" id="diff"><button data-v="0">Easy</button><button data-v="1" class="on">Normal</button><button data-v="2">Hard</button></div></div>
+    <div class="opt rcopt" style="display:none"><span>Track</span><div class="seg" id="rsize"><button data-v="0">Short</button><button data-v="1" class="on">Medium</button><button data-v="2">Long</button></div></div>
+    <div class="opt rcopt" style="display:none"><span>Extras</span><div class="seg" id="rext"><button data-v="0">None</button><button data-v="1" class="on">Boost</button><button data-v="2">Wild</button></div></div>
+    <div class="opt rcopt" style="display:none"><span>Barriers</span><div class="seg" id="rbar"><button data-v="0" class="on">Off</button><button data-v="1">On</button></div></div>
     <div class="opt" id="lapsRow" style="display:none"><span>Laps</span><div class="seg" id="laps"><button data-v="1" class="on">1</button><button data-v="2">2</button><button data-v="3">3</button></div></div>
     <div class="opt" id="holesRow" style="display:none"><span>Holes</span><div class="seg" id="holes"><button data-v="3" class="on">3</button><button data-v="6">6</button><button data-v="9">9</button></div></div>
     <div class="opt" id="hpRow" style="display:none"><span>King hearts</span><div class="seg" id="khp"><button data-v="2">2</button><button data-v="3" class="on">3</button><button data-v="5">5</button></div></div>
     <div class="opt" id="ptsRow" style="display:none"><span>Points to win</span><div class="seg" id="kpts"><button data-v="5" class="on">5</button><button data-v="8">8</button><button data-v="12">12</button></div></div>
     <div class="opt" id="tgtRow"><span>First to</span><div class="seg" id="tgt"><button data-v="3" class="on">3</button><button data-v="5">5</button><button data-v="7">7</button></div></div>
+    <div class="opt"><span>Vibration</span><div class="seg" id="vib"><button data-v="1" class="on">On</button><button data-v="0">Off</button></div></div>
     <div class="help" id="help"></div>
   </div>
 </div>
@@ -155,7 +159,7 @@ let area = { x:0, y:0, w:0, h:0 };
 const game = {
   state:'countdown', demo:true, mode:1, diff:1, target:3, score:[0,0],
   R:BASE_R, time:0, timer:0, pending:null, t:0,
-  sling:false, slingSel:false, fb:false, race:false, curl:false, golf:false, holes:3, siege:false, kingHP:3, koth:false, kothPts:5, zone:{ x:0, y:0, sx:0, sy:0 }, zoneTurns:0, laps:1, modeSel:0, sub:'', turn:0, roundNo:0, Rtarget:BASE_R, still:0, moveT:0, turnCount:0,
+  sling:false, slingSel:false, fb:false, race:false, curl:false, golf:false, holes:3, rsize:1, rext:1, rbar:0, vib:true, siege:false, kingHP:3, koth:false, kothPts:5, zone:{ x:0, y:0, sx:0, sy:0 }, zoneTurns:0, laps:1, modeSel:0, sub:'', turn:0, roundNo:0, Rtarget:BASE_R, still:0, moveT:0, turnCount:0,
   players:[], powerups:[], parts:[], texts:[], shake:0, banner:null, nextPU:5, paused:false
 };
 
@@ -198,7 +202,23 @@ const sfx = {
   point(){ [523,659,784].forEach((f,i) => tone(f, f, .14, 'triangle', .13, i*.09)); },
   win(){ [523,659,784,1047,784,1047].forEach((f,i) => tone(f, f*1.001, .2, 'square', .08, i*.12)); }
 };
-function buzz(ms){ if (navigator.vibrate && !game.demo) try { navigator.vibrate(ms); } catch(e){} }
+// Vibration: the standard API where it exists (Android, most browsers). iPhones have no web vibration API;
+// there we fall back to clicking a hidden iOS "switch" control, which gives a light haptic tick on recent iOS.
+let hapticEl = null;
+function hapticTick(){
+  try {
+    if (!hapticEl) {
+      hapticEl = document.createElement('label'); hapticEl.style.cssText = 'position:fixed;left:-99px;top:-99px;opacity:0;pointer-events:none';
+      const inp = document.createElement('input'); inp.type = 'checkbox'; inp.setAttribute('switch', ''); hapticEl.appendChild(inp); document.body.appendChild(hapticEl);
+    }
+    hapticEl.click();
+  } catch(e){}
+}
+function buzz(ms, force){
+  if (!game.vib || (game.demo && !force)) return;
+  if (navigator.vibrate) { try { navigator.vibrate(ms); } catch(e){} }
+  else hapticTick();
+}
 
 // ---------- input ----------
 const held = [{u:0,d:0,l:0,r:0},{u:0,d:0,l:0,r:0}];
@@ -315,7 +335,7 @@ function layout(){
     fb.vertical = portrait;
     const tp = portrait ? 48 : 54, bt = portrait ? 48 : game.golf ? 32 : 6;
     area = { x:0, y:tp, w:W, h:H - tp - bt };
-    const lng = game.race ? RC.W + 50 : game.curl ? CL.X1 - CL.X0 + 130 : game.golf ? GL.W + 40 : game.siege ? SG.W + 50 : FB.PL + 2*FB.GD + 80, sht = game.race ? RC.H + 50 : game.curl ? CL.SW + 170 : game.golf ? GL.H + 40 : game.siege ? SG.H + 50 : FB.PW + 80;
+    const lng = game.race ? rc.W + 50 : game.curl ? CL.X1 - CL.X0 + 130 : game.golf ? GL.W + 40 : game.siege ? SG.W + 50 : FB.PL + 2*FB.GD + 80, sht = game.race ? rc.H + 50 : game.curl ? CL.SW + 170 : game.golf ? GL.H + 40 : game.siege ? SG.H + 50 : FB.PW + 80;
     view.s = portrait ? Math.min(area.h/lng, area.w/sht) : Math.min(area.w/lng, area.h/sht);
     view.cx = W/2; view.cy = area.y + area.h/2;
     Object.assign(ctrl.style, portrait && game.mode === 2 ? { left:'10px', right:'auto', top:'6px', flexDirection:'row', transform:'none' }
@@ -634,7 +654,7 @@ function kothScore(){
   const inZ = P.filter(p => Math.hypot(p.x - z.x, p.y - z.y) < KOTH.ZR);
   if (inZ.length === 1) {
     const p = inZ[0]; game.score[p.i]++;
-    pop(p.x, p.y - 70, '+1', COL[p.i].main, 44); sfx.point(); burst(z.x, z.y, 16, '#ffd43b', 260, 'star', 10);
+    pop(p.x, p.y - 70, '+1', COL[p.i].main, 44); sfx.point(); buzz([30, 40, 30]); burst(z.x, z.y, 16, '#ffd43b', 260, 'star', 10);
   } else if (inZ.length === 2) { pop(z.x, z.y - 40, 'CONTESTED!', '#fff', 30); tone(300, 220, .2, 'square', .08); }
   const t = game.kothPts, s0 = game.score[0], s1 = game.score[1];
   if (s0 >= t || s1 >= t) { matchOver(s0 === s1 ? game.turn : s0 > s1 ? 0 : 1); return true; }
@@ -1394,38 +1414,123 @@ function fbRender(){
 }
 
 // ---------- race mode (turn-based slingshot around a track) ----------
-// Canonical world: RC.W x RC.H, centred on 0. Shown rotated on portrait screens (shares fb.vertical / fbRot).
-const RC = { W:1400, H:860, TW:72, R:28, MAX:1000, DD:1.7, GD:3.6, SP:20 };
+// Canonical world: rc.W x rc.H (depends on the generated track), centred on 0. Shown rotated on portrait screens.
+// Tracks are built from square tiles (straights and corners) as a random loop that never touches itself.
+const RC = { T:180, TW:58, R:28, MAX:1000, DD:1.7, GD:3.6, OIL:.45, SP:20, TYRE:11 };
 const RC_AI = [ { n:12, an:.12, pn:.2 }, { n:40, an:.04, pn:.07 }, { n:110, an:.012, pn:.025 } ];
-const RC_CTRL = [[-520,-300],[0,-330],[500,-300],[610,-40],[480,260],[160,300],[0,110],[-160,300],[-510,280],[-610,0]];
-const rc = { pts:[], tan:[], N:0, trees:[], racers:[], turn:0, sub:'aim', aim:0, aim0:0, pull:0, wasDown:true, plan:null,
+const RC_SIZES = [ { cols:6, rows:5, len:14 }, { cols:8, rows:6, len:22 }, { cols:10, rows:7, len:32 } ];
+const rc = { pts:[], tan:[], N:0, trees:[], tiles:[], pads:[], oil:[], tyres:[], tyreAt:new Map(), W:1400, H:860, cols:8, rows:6,
+             racers:[], turn:0, sub:'aim', aim:0, aim0:0, pull:0, wasDown:true, plan:null,
              aiT:0, still:0, moveT:0, timer:0, goal:0, drag:null, winner:0, firstNext:0 };
-(function buildTrack(){
-  const C = RC_CTRL, n = C.length, dense = [];
-  for (let i = 0; i < n; i++) {
-    const p0 = C[(i - 1 + n) % n], p1 = C[i], p2 = C[(i + 1) % n], p3 = C[(i + 2) % n];
-    for (let k = 0; k < 60; k++) {
-      const t = k/60, t2 = t*t, t3 = t2*t;
-      dense.push([0, 1].map(j => .5*(2*p1[j] + (-p0[j] + p2[j])*t + (2*p0[j] - 5*p1[j] + 4*p2[j] - p3[j])*t2 + (-p0[j] + 3*p1[j] - 3*p2[j] + p3[j])*t3)));
+
+// random simple loop on the tile grid: start with a 2x2 ring, then keep bulging edges outwards
+function rcLoop(cols, rows, target){
+  const key = (x, y) => y*cols + x;
+  for (let attempt = 0; attempt < 40; attempt++) {
+    const sx = 1 + (Math.random()*(cols - 3) | 0), sy = 1 + (Math.random()*(rows - 3) | 0);
+    let cyc = [[sx, sy], [sx + 1, sy], [sx + 1, sy + 1], [sx, sy + 1]];
+    const inC = new Set(cyc.map(([x, y]) => key(x, y)));
+    const ok = (x, y) => x >= 0 && y >= 0 && x < cols && y < rows && !inC.has(key(x, y));
+    const clear = (x, y, a, b) => [[1, 0], [-1, 0], [0, 1], [0, -1]].every(([dx, dy]) => {
+      const nx = x + dx, ny = y + dy; if ((nx === a[0] && ny === a[1]) || (nx === b[0] && ny === b[1])) return true;
+      return !inC.has(key(nx, ny));
+    });
+    for (let tries = 0; tries < 5000 && cyc.length < target; tries++) {
+      const i = Math.random()*cyc.length | 0, a = cyc[i], b = cyc[(i + 1) % cyc.length];
+      const dx = b[0] - a[0], dy = b[1] - a[1], s = Math.random() < .5 ? 1 : -1, px = -dy*s, py = dx*s;
+      const c = [a[0] + px, a[1] + py], d = [b[0] + px, b[1] + py];
+      if (!ok(...c) || !ok(...d) || !clear(c[0], c[1], a, d) || !clear(d[0], d[1], b, c)) continue;
+      cyc.splice(i + 1, 0, c, d); inC.add(key(...c)); inC.add(key(...d));
     }
+    if (cyc.length >= target*.8) return cyc;
   }
-  // resample by arc length
-  const pts = [dense[0]]; let acc = 0;
-  for (let i = 1; i <= dense.length; i++) {
-    const a = dense[i - 1], b = dense[i % dense.length], d = Math.hypot(b[0] - a[0], b[1] - a[1]);
+  return null;
+}
+function rcGenerate(){
+  const S = RC_SIZES[game.rsize], T = RC.T, TW = RC.TW;
+  let cyc = rcLoop(S.cols, S.rows, S.len);
+  if (!cyc) cyc = [[1, 1], [2, 1], [3, 1], [4, 1], [4, 2], [4, 3], [3, 3], [2, 3], [1, 3], [1, 2]];
+  // crop the field to the track (plus half a tile of grass all round) so it fills the screen
+  const mx = Math.min(...cyc.map(c => c[0])), my = Math.min(...cyc.map(c => c[1]));
+  cyc = cyc.map(([x, y]) => [x - mx, y - my]);
+  // keep the long side of the track along the canonical x axis (portrait screens rotate the view)
+  if (Math.max(...cyc.map(c => c[1])) > Math.max(...cyc.map(c => c[0]))) cyc = cyc.map(([x, y]) => [y, x]);
+  rc.cols = Math.max(...cyc.map(c => c[0])) + 1; rc.rows = Math.max(...cyc.map(c => c[1])) + 1;
+  rc.W = rc.cols*T + T; rc.H = rc.rows*T + T;
+  const n = cyc.length, wx = ([x, y]) => [(x + 1)*T - rc.W/2, (y + 1)*T - rc.H/2];
+  // tile descriptions + finish line on a random straight
+  let tiles = cyc.map((c, k) => {
+    const p = cyc[(k - 1 + n) % n], q = cyc[(k + 1) % n], [cx, cy] = wx(c);
+    const ein = [(c[0] - p[0]), (c[1] - p[1])], eout = [(q[0] - c[0]), (q[1] - c[1])];
+    const entry = [cx - ein[0]*T/2, cy - ein[1]*T/2], exit = [cx + eout[0]*T/2, cy + eout[1]*T/2];
+    const straight = ein[0] === eout[0] && ein[1] === eout[1];
+    const t = { c, cx, cy, entry, exit, straight, dir:eout };
+    if (!straight) {
+      t.pivot = [entry[0] + exit[0] - cx, entry[1] + exit[1] - cy];
+      t.a0 = Math.atan2(entry[1] - t.pivot[1], entry[0] - t.pivot[0]);
+      let a1 = Math.atan2(exit[1] - t.pivot[1], exit[0] - t.pivot[0]), d = a1 - t.a0;
+      while (d > Math.PI) d -= TAU; while (d < -Math.PI) d += TAU; t.da = d;
+    }
+    return t;
+  });
+  const straights = tiles.map((t, k) => t.straight ? k : -1).filter(k => k >= 0);
+  const k0 = straights.length ? straights[Math.random()*straights.length | 0] : 0;
+  tiles = tiles.slice(k0).concat(tiles.slice(0, k0));
+  // centreline: straight tiles are lines, corner tiles quarter arcs of radius T/2
+  const dense = [];
+  for (const t of tiles) {
+    if (t.straight) for (let k = 0; k < 9; k++) dense.push([t.entry[0] + (t.exit[0] - t.entry[0])*k/9, t.entry[1] + (t.exit[1] - t.entry[1])*k/9]);
+    else for (let k = 0; k < 12; k++) { const a = t.a0 + t.da*k/12; dense.push([t.pivot[0] + Math.cos(a)*T/2, t.pivot[1] + Math.sin(a)*T/2]); }
+  }
+  // rotate so the finish line (centre of the first tile) is index 0, then resample
+  const c0 = [tiles[0].cx, tiles[0].cy]; let i0 = 0, bd = 1e9;
+  dense.forEach((p, i) => { const d = Math.hypot(p[0] - c0[0], p[1] - c0[1]); if (d < bd) { bd = d; i0 = i; } });
+  const loop = dense.slice(i0).concat(dense.slice(0, i0));
+  const pts = [loop[0]]; let acc = 0;
+  for (let i = 1; i <= loop.length; i++) {
+    const a = loop[i - 1], b = loop[i % loop.length], d = Math.hypot(b[0] - a[0], b[1] - a[1]);
+    if (!d) continue;
     acc += d;
     while (acc >= RC.SP) { acc -= RC.SP; const k = 1 - acc/d; pts.push([a[0] + (b[0] - a[0])*k, a[1] + (b[1] - a[1])*k]); }
   }
-  if (Math.hypot(pts[pts.length-1][0] - pts[0][0], pts[pts.length-1][1] - pts[0][1]) < RC.SP*.5) pts.pop();
-  rc.pts = pts; rc.N = pts.length;
+  if (Math.hypot(pts[pts.length - 1][0] - pts[0][0], pts[pts.length - 1][1] - pts[0][1]) < RC.SP*.5) pts.pop();
+  rc.pts = pts; rc.N = pts.length; rc.tiles = tiles;
   rc.tan = pts.map((p, i) => { const q = pts[(i + 1) % pts.length], o = pts[(i - 1 + pts.length) % pts.length], l = Math.hypot(q[0] - o[0], q[1] - o[1]); return [(q[0] - o[0])/l, (q[1] - o[1])/l]; });
-  let seed = 11; const rnd = () => (seed = (seed*16807) % 2147483647)/2147483647;
-  for (let k = 0; k < 400 && rc.trees.length < 46; k++) {
-    const x = (rnd() - .5)*(RC.W - 60), y = (rnd() - .5)*(RC.H - 60);
-    if (pts.every(p => Math.hypot(p[0] - x, p[1] - y) > RC.TW + 48) && rc.trees.every(t => Math.hypot(t.x - x, t.y - y) > 60))
-      rc.trees.push({ x, y, s:.8 + rnd()*.6, k:rnd() < .25 ? 'bush' : 'tree' });
+  // extras: boost pads on straights, oil slicks anywhere (not near the start)
+  rc.pads = []; rc.oil = [];
+  const pool = tiles.map((t, k) => k).filter(k => k > 2 && k < tiles.length - 1).sort(() => Math.random() - .5);
+  if (game.rext >= 1) for (const k of pool.filter(k => tiles[k].straight).slice(0, Math.max(1, Math.round(tiles.length/8)))) {
+    const t = tiles[k]; t.pad = true; rc.pads.push({ x:t.cx, y:t.cy, dx:t.dir[0], dy:t.dir[1] });
   }
-})();
+  if (game.rext >= 2) for (const k of pool.filter(k => !tiles[k].pad).slice(0, Math.max(1, Math.round(tiles.length/7)))) {
+    const t = tiles[k], off = (Math.random() - .5)*TW*.8;
+    const [px, py] = t.straight ? [t.cx - t.dir[1]*off, t.cy + t.dir[0]*off] : (() => { const a = t.a0 + t.da/2, r = T/2 + off; return [t.pivot[0] + Math.cos(a)*r, t.pivot[1] + Math.sin(a)*r]; })();
+    rc.oil.push({ x:px, y:py, r:34 + Math.random()*10 });
+  }
+  // tyre walls on the outside of corners
+  rc.tyres = []; rc.tyreAt = new Map();
+  if (game.rbar) tiles.forEach(t => {
+    if (t.straight) return;
+    const R2 = T/2 + TW + 18, steps = Math.round(Math.abs(t.da)*R2/(RC.TYRE*2.1));
+    for (let k = 0; k <= steps; k++) {
+      const a = t.a0 + t.da*k/steps, ty = { x:t.pivot[0] + Math.cos(a)*R2, y:t.pivot[1] + Math.sin(a)*R2 };
+      rc.tyres.push(ty);
+      const key = t.c[1]*100 + t.c[0]; if (!rc.tyreAt.has(key)) rc.tyreAt.set(key, []); rc.tyreAt.get(key).push(ty);
+    }
+  });
+  // scenery in the empty tiles
+  const used = new Set(tiles.map(t => t.c[1]*100 + t.c[0]));
+  rc.trees = [];
+  for (let y = -1; y <= rc.rows; y++) for (let x = -1; x <= rc.cols; x++) {
+    if (used.has(y*100 + x)) continue;
+    const [cx, cy] = wx([x, y]), k = 1 + (Math.random()*2 | 0);
+    for (let j = 0; j < k; j++) {
+      const tx = cx + (Math.random() - .5)*T*.55, ty = cy + (Math.random() - .5)*T*.55;
+      if (Math.abs(tx) > rc.W/2 - 30 || Math.abs(ty) > rc.H/2 - 30) continue;
+      if (pts.every(p => Math.hypot(p[0] - tx, p[1] - ty) > TW + 50)) rc.trees.push({ x:tx, y:ty, s:.8 + Math.random()*.6, k:Math.random() < .25 ? 'bush' : 'tree' });
+    }
+  }
+}
 function rcSegDist(x, y, i){
   const a = rc.pts[i], b = rc.pts[(i + 1) % rc.N], dx = b[0] - a[0], dy = b[1] - a[1];
   const t = Math.max(0, Math.min(1, ((x - a[0])*dx + (y - a[1])*dy)/(dx*dx + dy*dy)));
@@ -1443,10 +1548,30 @@ function rcTrack(b){
 }
 function rcStep(B, dt, quiet){
   for (const b of B) {
-    const f = Math.exp(-(b.off ? RC.GD : RC.DD)*dt); b.vx *= f; b.vy *= f;
+    const oily = rc.oil.some(o => Math.hypot(b.x - o.x, b.y - o.y) < o.r);
+    const f = Math.exp(-(b.off ? RC.GD : oily ? RC.OIL : RC.DD)*dt); b.vx *= f; b.vy *= f;
     if (b.vx*b.vx + b.vy*b.vy < 36) { b.vx = 0; b.vy = 0; }
+    if (oily && !b.oily && (b.vx || b.vy) && !quiet) { const [px, py] = fbRot(b.x, b.y); pop(px, py - 30, 'SLIPPY!', '#d0bfff', 22); tone(500, 200, .2, 'sine', .07); }
+    b.oily = oily;
+    let onPad = -1;
+    rc.pads.forEach((pd, k) => { if (Math.hypot(b.x - pd.x, b.y - pd.y) < 40) onPad = k; });
+    if (onPad >= 0 && b.pad !== onPad && (b.vx || b.vy)) {
+      const pd = rc.pads[onPad]; b.vx += pd.dx*420; b.vy += pd.dy*420;
+      if (!quiet) { const [px, py] = fbRot(b.x, b.y); pop(px, py - 30, 'BOOST!', '#ffe066', 26); burst(px, py, 10, '#ffe066', 220, 'star', 8); tone(400, 1200, .2, 'sawtooth', .07); buzz(25); }
+    }
+    b.pad = onPad;
     b.x += b.vx*dt; b.y += b.vy*dt;
-    const hx = RC.W/2 - b.r, hy = RC.H/2 - b.r;
+    if (rc.tyres.length) {
+      const gx = Math.floor((b.x + rc.W/2 - RC.T/2)/RC.T), gy = Math.floor((b.y + rc.H/2 - RC.T/2)/RC.T);
+      for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) for (const t of rc.tyreAt.get((gy + dy)*100 + gx + dx) || []) {
+        const ex = b.x - t.x, ey = b.y - t.y, d = Math.hypot(ex, ey), min = b.r + RC.TYRE;
+        if (d >= min || !d) continue;
+        const nx = ex/d, ny = ey/d, vn = b.vx*nx + b.vy*ny;
+        b.x = t.x + nx*min; b.y = t.y + ny*min;
+        if (vn < 0) { b.vx -= 1.5*vn*nx; b.vy -= 1.5*vn*ny; if (!quiet && -vn > 150) { tone(160, 90, .08, 'square', .1); buzz(20); } }
+      }
+    }
+    const hx = rc.W/2 - b.r, hy = rc.H/2 - b.r;
     if (Math.abs(b.x) > hx) { b.x = Math.sign(b.x)*hx; b.vx = -b.vx*.6; }
     if (Math.abs(b.y) > hy) { b.y = Math.sign(b.y)*hy; b.vy = -b.vy*.6; }
     rcTrack(b);
@@ -1458,6 +1583,7 @@ const rcAhead = (b, k) => rc.pts[(b.seg + k) % rc.N];
 
 function rcInit(){
   game.state = 'play'; game.parts = []; game.texts = [];
+  rcGenerate(); layout();
   rc.goal = game.laps*rc.N;
   const s0 = rc.N - 4, [cx, cy] = rc.pts[s0], [tx, ty] = rc.tan[s0], nx = -ty, ny = tx;
   rc.racers = [0, 1].map(t => {
@@ -1518,10 +1644,10 @@ function rcStopped(){
     } else {
       const before = rcLap(r.last.prog);
       r.last = { x:r.x, y:r.y, seg:r.seg, prog:r.prog };
-      if (r.prog < rc.goal && rcLap(r.prog) > before) { banner('LAP ' + rcLap(r.prog) + '/' + game.laps, nameOf(r.i), COL[r.i].main); sfx.point(); }
+      if (r.prog < rc.goal && rcLap(r.prog) > before) { banner('LAP ' + rcLap(r.prog) + '/' + game.laps, nameOf(r.i), COL[r.i].main); sfx.point(); buzz([30, 40, 30]); }
     }
   }
-  if (resets) { rc.sub = 'reset'; rc.timer = .7; tone(500, 140, .35, 'sawtooth', .07); }
+  if (resets) { rc.sub = 'reset'; rc.timer = .7; tone(500, 140, .35, 'sawtooth', .07); buzz([60, 40, 60]); }
   else rcAfterStop();
 }
 function rcAfterStop(){
@@ -1537,7 +1663,7 @@ function rcAfterStop(){
   if (fin.length) {
     const w = fin.sort((p, q) => q.prog - p.prog)[0].i;
     rc.winner = w; rc.sub = 'done'; rc.timer = 1.8; game.score[w] = 1; game.score[1 - w] = 0;
-    banner('FINISH!', nameOf(w) + ' WINS', COL[w].main); sfx.point();
+    banner('FINISH!', nameOf(w) + ' WINS', COL[w].main); sfx.point(); buzz([80, 50, 80, 50, 120]);
     const [px, py] = fbRot(rc.racers[w].x, rc.racers[w].y);
     burst(px, py, 30, '#ffe066', 420, 'star', 12);
   } else rcStartTurn(1 - rc.turn);
@@ -1613,16 +1739,46 @@ const rcDragEnd = e => {
 // drawing
 function rcTrackPath(){ X.beginPath(); rc.pts.forEach((p, i) => i ? X.lineTo(p[0], p[1]) : X.moveTo(p[0], p[1])); X.closePath(); }
 function rcDrawWorld(){
-  const hw = RC.W/2, hh = RC.H/2, TW = RC.TW;
-  X.fillStyle = 'rgba(0,0,0,.15)'; rr(-hw - 20, -hh - 12, RC.W + 40, RC.H + 40, 36); X.fill();
-  X.fillStyle = '#8bdc68'; X.strokeStyle = '#2b2d42'; X.lineWidth = 6; rr(-hw - 20, -hh - 20, RC.W + 40, RC.H + 40, 36); X.fill(); X.stroke();
+  const hw = rc.W/2, hh = rc.H/2, TW = RC.TW, T = RC.T;
+  X.fillStyle = 'rgba(0,0,0,.15)'; rr(-hw - 20, -hh - 12, rc.W + 40, rc.H + 40, 36); X.fill();
+  X.fillStyle = '#8bdc68'; X.strokeStyle = '#2b2d42'; X.lineWidth = 6; rr(-hw - 20, -hh - 20, rc.W + 40, rc.H + 40, 36); X.fill(); X.stroke();
+  // faint tile grid on the grass
+  X.strokeStyle = 'rgba(255,255,255,.12)'; X.lineWidth = 2;
+  for (let x = 0; x <= rc.cols; x++) { X.beginPath(); X.moveTo(-hw + T/2 + x*T, -hh); X.lineTo(-hw + T/2 + x*T, hh); X.stroke(); }
+  for (let y = 0; y <= rc.rows; y++) { X.beginPath(); X.moveTo(-hw, -hh + T/2 + y*T); X.lineTo(hw, -hh + T/2 + y*T); X.stroke(); }
   X.lineJoin = 'round'; X.lineCap = 'round';
-  X.save(); X.translate(0, 9); rcTrackPath(); X.strokeStyle = 'rgba(0,0,0,.16)'; X.lineWidth = 2*TW + 26; X.stroke(); X.restore();
-  rcTrackPath(); X.strokeStyle = '#2b2d42'; X.lineWidth = 2*TW + 24; X.stroke();
-  X.strokeStyle = '#ff6b6b'; X.lineWidth = 2*TW + 16; X.stroke();
-  X.setLineDash([22, 22]); X.lineCap = 'butt'; X.strokeStyle = '#fff'; X.stroke(); X.setLineDash([]);
-  X.strokeStyle = '#6b6f86'; X.lineWidth = 2*TW; X.stroke();
-  X.setLineDash([26, 24]); X.strokeStyle = 'rgba(255,255,255,.55)'; X.lineWidth = 4; X.stroke(); X.setLineDash([]);
+  X.save(); X.translate(0, 9); rcTrackPath(); X.strokeStyle = 'rgba(0,0,0,.16)'; X.lineWidth = 2*TW + 22; X.stroke(); X.restore();
+  rcTrackPath(); X.strokeStyle = '#2b2d42'; X.lineWidth = 2*TW + 16; X.stroke();
+  X.strokeStyle = '#ffffff'; X.lineWidth = 2*TW + 8; X.stroke();
+  X.strokeStyle = '#6b6f86'; X.lineWidth = 2*TW - 2; X.stroke();
+  // kerbs: red/white blocks on the inside and outside of every corner
+  X.lineCap = 'butt';
+  for (const t of rc.tiles) {
+    if (t.straight) continue;
+    const lo = Math.min(t.a0, t.a0 + t.da), hi = Math.max(t.a0, t.a0 + t.da);
+    for (const r of [T/2 - TW + 5, T/2 + TW - 5]) {
+      X.lineWidth = 12;
+      X.strokeStyle = '#e03131'; X.beginPath(); X.arc(t.pivot[0], t.pivot[1], r, lo, hi); X.stroke();
+      const seg = 16/r, nseg = Math.max(2, Math.round((hi - lo)/seg));
+      X.strokeStyle = '#fff';
+      for (let k = 0; k < nseg; k += 2) { X.beginPath(); X.arc(t.pivot[0], t.pivot[1], r, lo + (hi - lo)*k/nseg, lo + (hi - lo)*(k + 1)/nseg); X.stroke(); }
+    }
+  }
+  X.lineCap = 'round';
+  rcTrackPath(); X.setLineDash([26, 24]); X.strokeStyle = 'rgba(255,255,255,.55)'; X.lineWidth = 4; X.stroke(); X.setLineDash([]);
+  // oil slicks and boost pads
+  for (const o of rc.oil) {
+    X.fillStyle = '#2b2140'; X.beginPath(); X.ellipse(o.x, o.y, o.r, o.r*.8, .4, 0, TAU); X.fill();
+    X.fillStyle = 'rgba(177,151,252,.45)'; X.beginPath(); X.ellipse(o.x - o.r*.25, o.y - o.r*.2, o.r*.4, o.r*.18, .4, 0, TAU); X.fill();
+  }
+  for (const pd of rc.pads) {
+    const nx = -pd.dy, ny = pd.dx, P = (u, v) => [pd.x + pd.dx*u + nx*v, pd.y + pd.dy*u + ny*v];
+    X.fillStyle = '#ffd43b'; X.strokeStyle = '#2b2d42'; X.lineWidth = 4; X.beginPath();
+    [[-40, -34], [40, -34], [40, 34], [-40, 34]].forEach(([u, v], k) => { const [x, y] = P(u, v); k ? X.lineTo(x, y) : X.moveTo(x, y); });
+    X.closePath(); X.fill(); X.stroke();
+    X.strokeStyle = '#e8590c'; X.lineWidth = 7; X.lineJoin = 'round';
+    for (const u of [-18, 6]) { X.beginPath(); [[u - 8, -18], [u + 10, 0], [u - 8, 18]].forEach(([a, b2], k) => { const [x, y] = P(a + ((game.t*40) % 12), b2); k ? X.lineTo(x, y) : X.moveTo(x, y); }); X.stroke(); }
+  }
   // direction chevrons
   X.strokeStyle = 'rgba(255,255,255,.3)'; X.lineWidth = 7; X.lineCap = 'round';
   for (let i = 8; i < rc.N - 4; i += 16) {
@@ -1642,6 +1798,10 @@ function rcDrawWorld(){
       [[ox, oy], [ox + sq, oy], [ox + sq, oy + sq], [ox, oy + sq]].forEach(([u, v], k) => { const [px, py] = P(u, v); k ? X.lineTo(px, py) : X.moveTo(px, py); });
       X.closePath(); X.fill();
     }
+  }
+  for (const t of rc.tyres) {
+    X.fillStyle = '#343a40'; X.strokeStyle = '#1b1d2a'; X.lineWidth = 3; X.beginPath(); X.arc(t.x, t.y, RC.TYRE, 0, TAU); X.fill(); X.stroke();
+    X.fillStyle = '#868e96'; X.beginPath(); X.arc(t.x, t.y, RC.TYRE*.4, 0, TAU); X.fill();
   }
   for (const t of rc.trees) {
     const r = 22*t.s;
@@ -1819,7 +1979,7 @@ function clScoreEnd(){
   if (h.team < 0) { banner('BLANK END', game.score[0] + ' - ' + game.score[1], '#ffe066'); tone(300, 200, .3, 'triangle', .1); }
   else {
     game.score[h.team] += h.pts; cl.scorer = h.team;
-    banner(nameOf(h.team) + ' +' + h.pts, game.score[0] + ' - ' + game.score[1], COL[h.team].main); sfx.point();
+    banner(nameOf(h.team) + ' +' + h.pts, game.score[0] + ' - ' + game.score[1], COL[h.team].main); sfx.point(); buzz([40, 40, 40]);
     cl.hammer = 1 - h.team;               // the team that scored throws first next end
     for (const s of h.list) { const [px, py] = fbRot(s.x, s.y); burst(px, py, 10, COL[h.team].main, 220, 'star', 9); }
   }
@@ -2119,7 +2279,7 @@ function glStep(B, dt, quiet){
     } else b.lipped = false;
     if (glInWater(b.x, b.y)) {
       b.wet = true; b.vx = b.vy = 0;
-      if (!quiet) { const [px, py] = fbRot(b.x, b.y); sfx.splash(); burst(px, py, 16, '#ffffff', 220, 'drop', 7); pop(px, py - 24, 'SPLASH! +1', '#fff', 26); }
+      if (!quiet) { const [px, py] = fbRot(b.x, b.y); sfx.splash(); buzz(70); burst(px, py, 16, '#ffffff', 220, 'drop', 7); pop(px, py - 24, 'SPLASH! +1', '#fff', 26); }
     }
   }
   const [a, c] = B;
@@ -2128,7 +2288,7 @@ function glStep(B, dt, quiet){
 function glSinkFx(b){
   b.falling = 0;
   const [px, py] = fbRot(b.x, b.y);
-  [880, 660, 990].forEach((f, k) => tone(f, f, .09, 'triangle', .12, k*.07));
+  [880, 660, 990].forEach((f, k) => tone(f, f, .09, 'triangle', .12, k*.07)); buzz([30, 30, 60]);
   burst(px, py, 14, '#ffe066', 240, 'star', 9);
 }
 function glBall(team){
@@ -2816,6 +2976,11 @@ function togglePause(){ if (game.demo) return; game.paused = !game.paused; $('#p
 document.addEventListener('visibilitychange', () => { if (document.hidden && !game.demo && !game.paused && game.state !== 'over') togglePause(); });
 
 seg('#laps', v => game.laps = v);
+seg('#rsize', v => game.rsize = v);
+seg('#rext', v => game.rext = v);
+seg('#rbar', v => game.rbar = v);
+seg('#vib', v => { game.vib = !!v; buzz(40, true); });
+document.querySelectorAll('#menu button, #over button, #pause button').forEach(b => b.addEventListener('click', () => buzz(12, true)));
 seg('#holes', v => game.holes = v);
 seg('#khp', v => game.kingHP = v);
 seg('#kpts', v => game.kothPts = v);
@@ -2824,6 +2989,7 @@ const pu = c => `<span class="pu" style="background:${c}"></span>`;
 function renderHelp(){
 $('.tag').textContent = ['Bump your rival off the island!', 'Bump your rival off the island!', 'Flick, pass and score!', 'Fling around the track. First to the finish!', 'Slide, curl and sweep to the button!', 'Fewest strokes wins. Mind the water!', 'Smash the castle, bonk the king!', 'Hold the glowing hill to score!'][game.modeSel];
 $('#lapsRow').style.display = game.modeSel === 3 ? '' : 'none';
+document.querySelectorAll('.rcopt').forEach(el => el.style.display = game.modeSel === 3 ? '' : 'none');
 $('#tgtRow').style.display = game.modeSel === 3 || game.modeSel >= 5 ? 'none' : '';
 $('#hpRow').style.display = game.modeSel === 6 ? '' : 'none';
 $('#ptsRow').style.display = game.modeSel === 7 ? '' : 'none';
@@ -2847,7 +3013,7 @@ if (game.modeSel === 4) { $('#help').innerHTML = (isTouch
 if (game.modeSel === 3) { $('#help').innerHTML = (isTouch
   ? `<b>Race!</b> Take turns flinging your blob around the track.<br><b>Drag back</b> anywhere and let go.`
   : `<b>Race!</b> Take turns flinging your blob around the track.<br><span class="r">P1</span>: <b>A</b>/<b>D</b> aim, <b>hold S</b> pull &amp; release, <b>W</b> eases off · <span class="bl">P2</span>: <b>←</b> <b>→</b> <b>↓</b> <b>↑</b> · or <b>drag back</b> with the mouse`)
-  + `<br>Stop <b>off the track</b> (or cut across the grass) and you go back to your last stop. Grass slows you down!`; return; }
+  + `<br>A <b>new random track</b> every race! Stop <b>off the track</b> (or cut across the grass) and you go back to your last stop. <b>Boost</b> pads speed you up, <b>oil</b> makes you slide.`; return; }
 if (game.modeSel === 2) { $('#help').innerHTML = isTouch
   ? `<b>Football!</b> Take turns flicking one of your 4 players.<br><b>Tap a player</b>, <b>drag back</b> and let go to shoot.<br>Score in the rival's goal! 2 players: lay the phone flat between you.`
   : `<b>Football!</b> Take turns flicking one of your 4 players.<br><span class="r">P1</span>: <b>A</b>/<b>D</b> aim, <b>hold S</b> pull &amp; release to shoot, <b>W</b> switch player<br><span class="bl">P2</span>: same with <b>←</b> <b>→</b> <b>↓</b> <b>↑</b> · or click a player and <b>drag back</b>`; return; }
