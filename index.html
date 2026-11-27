@@ -44,7 +44,7 @@
   .seg button:first-child{border-left:0}
   .seg button.on{background:var(--sun)}
   .seg.wide{width:100%;margin:2px 0 10px;display:grid;grid-template-columns:repeat(12,1fr);gap:3px;background:var(--ink)}
-  .seg.wide button{border:0;background:#fff;grid-column:span 3;padding:9px 2px} .seg.wide button:nth-child(n+5){grid-column:span 4}
+  .seg.wide button{border:0;background:#fff;grid-column:span 3;padding:9px 2px}
   .seg.wide button.on{background:var(--sun)}
   @media (max-width:430px){ .seg button{padding:7px 8px;font-size:14px} .opt{font-size:15px} }
   .help{margin-top:12px;padding:10px 12px;background:#eaf8ff;border:3px dashed #9fd8f5;border-radius:16px;font-size:14px;
@@ -90,11 +90,12 @@
       <button class="big b1" id="play1">1 Player<small>vs CPU</small></button>
       <button class="big b2" id="play2">2 Players<small>same device</small></button>
     </div>
-    <div class="seg wide" id="mode"><button data-v="0" class="on">Real-time</button><button data-v="1">Slingshot</button><button data-v="2">Football</button><button data-v="3">Race</button><button data-v="4">Curling</button><button data-v="5">Golf</button><button data-v="6">Siege</button></div>
+    <div class="seg wide" id="mode"><button data-v="0" class="on">Real-time</button><button data-v="1">Slingshot</button><button data-v="2">Football</button><button data-v="3">Race</button><button data-v="4">Curling</button><button data-v="5">Golf</button><button data-v="6">Siege</button><button data-v="7">Hill</button></div>
     <div class="opt"><span>CPU level</span><div class="seg" id="diff"><button data-v="0">Easy</button><button data-v="1" class="on">Normal</button><button data-v="2">Hard</button></div></div>
     <div class="opt" id="lapsRow" style="display:none"><span>Laps</span><div class="seg" id="laps"><button data-v="1" class="on">1</button><button data-v="2">2</button><button data-v="3">3</button></div></div>
     <div class="opt" id="holesRow" style="display:none"><span>Holes</span><div class="seg" id="holes"><button data-v="3" class="on">3</button><button data-v="6">6</button><button data-v="9">9</button></div></div>
     <div class="opt" id="hpRow" style="display:none"><span>King hearts</span><div class="seg" id="khp"><button data-v="2">2</button><button data-v="3" class="on">3</button><button data-v="5">5</button></div></div>
+    <div class="opt" id="ptsRow" style="display:none"><span>Points to win</span><div class="seg" id="kpts"><button data-v="5" class="on">5</button><button data-v="8">8</button><button data-v="12">12</button></div></div>
     <div class="opt" id="tgtRow"><span>First to</span><div class="seg" id="tgt"><button data-v="3" class="on">3</button><button data-v="5">5</button><button data-v="7">7</button></div></div>
     <div class="help" id="help"></div>
   </div>
@@ -154,7 +155,7 @@ let area = { x:0, y:0, w:0, h:0 };
 const game = {
   state:'countdown', demo:true, mode:1, diff:1, target:3, score:[0,0],
   R:BASE_R, time:0, timer:0, pending:null, t:0,
-  sling:false, slingSel:false, fb:false, race:false, curl:false, golf:false, holes:3, siege:false, kingHP:3, laps:1, modeSel:0, sub:'', turn:0, roundNo:0, Rtarget:BASE_R, still:0, moveT:0, turnCount:0,
+  sling:false, slingSel:false, fb:false, race:false, curl:false, golf:false, holes:3, siege:false, kingHP:3, koth:false, kothPts:5, zone:{ x:0, y:0, sx:0, sy:0 }, zoneTurns:0, laps:1, modeSel:0, sub:'', turn:0, roundNo:0, Rtarget:BASE_R, still:0, moveT:0, turnCount:0,
   players:[], powerups:[], parts:[], texts:[], shake:0, banner:null, nextPU:5, paused:false
 };
 
@@ -345,11 +346,12 @@ function startRound(){
   game.R = game.Rtarget = BASE_R; game.time = 0; game.pending = null; game.turnCount = 0; game.sub = 'wait';
   if (game.sling) { game.turn = game.roundNo % 2; game.roundNo++; } game.powerups = []; game.nextPU = 4 + Math.random()*2;
   placePlayers();
+  if (game.koth) { game.zone = { x:0, y:0, sx:0, sy:0 }; game.zoneTurns = 0; }
   game.state = 'countdown'; game.timer = game.demo ? .6 : 3;
   if (!game.demo) { banner('3'); sfx.beep(false); }
 }
 function startMatch(mode){
-  game.demo = false; game.mode = mode; game.score = [0,0]; game.paused = false; game.fb = game.modeSel === 2; game.race = game.modeSel === 3; game.curl = game.modeSel === 4; game.golf = game.modeSel === 5; game.siege = game.modeSel === 6; game.sling = game.slingSel && !game.fb; game.roundNo = 0;
+  game.demo = false; game.mode = mode; game.score = [0,0]; game.paused = false; game.fb = game.modeSel === 2; game.race = game.modeSel === 3; game.curl = game.modeSel === 4; game.golf = game.modeSel === 5; game.siege = game.modeSel === 6; game.koth = game.modeSel === 7; game.sling = game.slingSel && !game.fb; game.roundNo = 0;
   pads.forEach((el, i) => el.querySelector('.hint').textContent = 'P' + (i+1) + (game.sling ? ' · ←→ aim · hold ↓, let go' : ' · double-tap = DASH'));
   game.players = [makePlayer(0, false), makePlayer(1, mode === 1)];
   game.parts = []; game.texts = [];
@@ -359,7 +361,7 @@ function startMatch(mode){
   layout(); if (game.fb) fbInit(); else if (game.race) rcInit(); else if (game.curl) clInit(); else if (game.golf) glInit(); else if (game.siege) sgInit(); else startRound();
 }
 function startDemo(){
-  game.demo = true; game.mode = 2; game.paused = false; game.sling = false; game.fb = false; game.race = false; game.curl = false; game.golf = false; game.siege = false;
+  game.demo = true; game.mode = 2; game.paused = false; game.sling = false; game.fb = false; game.race = false; game.curl = false; game.golf = false; game.siege = false; game.koth = false;
   game.players = [makePlayer(0, true), makePlayer(1, true)];
   $('#menu').classList.remove('hidden'); $('#over').classList.add('hidden'); $('#pause').classList.add('hidden');
   layout(); startRound();
@@ -532,7 +534,8 @@ function endTurn(){
   for (const k in p.pu) if (p.pu[k] > 0 && !p.puNew[k]) p.pu[k]--;
   P.forEach(q => q.puNew = {});
   game.turnCount++;
-  if (game.turnCount % 2 === 0) game.Rtarget = Math.max(MIN_R, game.Rtarget - SHRINK);
+  if (game.koth && kothScore()) return;
+  if (!game.koth && game.turnCount % 2 === 0) game.Rtarget = Math.max(MIN_R, game.Rtarget - SHRINK);
   game.powerups.forEach(pu => { pu.turns--; if (pu.turns <= 0) pu.life = -1; });
   game.powerups = game.powerups.filter(pu => pu.life > 0);
   if (!game.powerups.length && game.turnCount % 3 === 2) {
@@ -582,6 +585,7 @@ function simShot(p, o, ang, pow){
     if (!a.vx && !a.vy && !b.vx && !b.vy) break;
   }
   const af = a.falling >= 0, bf = b.falling >= 0;
+  if (game.koth) return kothEval(a, b, af, bf, R);
   if (af && bf) return -300;
   if (af) return -1000;
   if (bf) return 1000 - Math.hypot(a.x, a.y)*.5;
@@ -591,11 +595,81 @@ function aiPlan(p, o){
   const cfg = SL_AI[game.diff], base = Math.atan2(o.y - p.y, o.x - p.x);
   let best = null;
   for (let k = 0; k < cfg.n; k++) {
-    const ang = k < cfg.n*.65 ? base + (Math.random() - .5)*.7 : Math.random()*TAU;
+    const toZone = game.koth && Math.random() < .5, zb = Math.atan2(game.zone.y - p.y, game.zone.x - p.x);
+    const ang = k < cfg.n*.65 ? (toZone ? zb : base) + (Math.random() - .5)*.7 : Math.random()*TAU;
     const pow = .2 + Math.random()*.8, sc = simShot(p, o, ang, pow);
     if (!best || sc > best.sc) best = { ang, pow, sc };
   }
   return { ang: best.ang + (Math.random() - .5)*2*cfg.an, pow: Math.max(.1, Math.min(1, best.pow + (Math.random() - .5)*2*cfg.pn)) };
+}
+// ---------- king of the hill ----------
+const KOTH = { ZR:80 };
+function kothEval(a, b, af, bf, R){
+  const z = game.zone, da = Math.hypot(a.x - z.x, a.y - z.y), db = Math.hypot(b.x - z.x, b.y - z.y);
+  const inA = !af && da < KOTH.ZR, inB = !bf && db < KOTH.ZR;
+  let sc = 0;
+  if (af) sc -= 600; else sc -= da*.8 + Math.max(0, Math.hypot(a.x, a.y) - (R - 90))*2.5;
+  if (bf) sc += 500; else sc += db*.4;
+  if (inA && !inB) sc += 400;
+  if (inB && !inA) sc -= 300;
+  return sc;
+}
+function kothRespawn(p){
+  const o = game.players[1 - p.i];
+  let best = null;
+  for (let k = 0; k < 8; k++) {
+    const a = k*TAU/8, x = Math.cos(a)*240, y = Math.sin(a)*240, d = Math.hypot(x - o.x, y - o.y) + Math.hypot(x - game.zone.x, y - game.zone.y)*.3;
+    if (!best || d > best.d) best = { x, y, d };
+  }
+  Object.assign(p, { x:best.x, y:best.y, vx:0, vy:0, falling:-1, splashed:false, stun:0, trail:[], hit:.5 });
+  burst(p.x, p.y, 14, '#fff', 200, 'dot', 9);
+}
+function kothScore(){
+  const P = game.players, z = game.zone;
+  for (const p of P) if (p.falling >= 0) {
+    const o = P[1 - p.i];
+    if (o.falling < 0) { game.score[o.i]++; pop(o.x, o.y - 70, '+1 RING-OUT', COL[o.i].main, 30); }
+    kothRespawn(p);
+  }
+  const inZ = P.filter(p => Math.hypot(p.x - z.x, p.y - z.y) < KOTH.ZR);
+  if (inZ.length === 1) {
+    const p = inZ[0]; game.score[p.i]++;
+    pop(p.x, p.y - 70, '+1', COL[p.i].main, 44); sfx.point(); burst(z.x, z.y, 16, '#ffd43b', 260, 'star', 10);
+  } else if (inZ.length === 2) { pop(z.x, z.y - 40, 'CONTESTED!', '#fff', 30); tone(300, 220, .2, 'square', .08); }
+  const t = game.kothPts, s0 = game.score[0], s1 = game.score[1];
+  if (s0 >= t || s1 >= t) { matchOver(s0 === s1 ? game.turn : s0 > s1 ? 0 : 1); return true; }
+  game.zoneTurns++;
+  if (game.zoneTurns % 4 === 0) {
+    for (let k = 0; k < 30; k++) {
+      const a = Math.random()*TAU, d = Math.sqrt(Math.random())*game.R*.55, x = Math.cos(a)*d, y = Math.sin(a)*d;
+      if (Math.hypot(x - z.x, y - z.y) > 170) { z.x = x; z.y = y; break; }
+    }
+    banner('THE HILL MOVES!', null, '#ffd43b'); tone(400, 800, .3, 'triangle', .1);
+  }
+  return false;
+}
+function kothDrawZone(){
+  const z = game.zone, t = game.t;
+  z.sx += (z.x - z.sx)*.08; z.sy += (z.y - z.sy)*.08;
+  const occ = game.players.filter(p => p.falling < 0 && Math.hypot(p.x - z.x, p.y - z.y) < KOTH.ZR);
+  X.fillStyle = occ.length === 1 ? COL[occ[0].i].main : '#ffd43b';
+  X.globalAlpha = .28 + Math.sin(t*4)*.08; X.beginPath(); X.arc(z.sx, z.sy, KOTH.ZR, 0, TAU); X.fill(); X.globalAlpha = 1;
+  X.strokeStyle = '#2b2d42'; X.lineWidth = 9; X.beginPath(); X.arc(z.sx, z.sy, KOTH.ZR, 0, TAU); X.stroke();
+  X.strokeStyle = '#ffd43b'; X.lineWidth = 5; X.setLineDash([16, 10]); X.lineDashOffset = -t*30; X.stroke(); X.setLineDash([]);
+  const x = z.sx, y = z.sy + 6, w = 20;
+  X.globalAlpha = .55; X.fillStyle = '#ffd43b'; X.strokeStyle = '#2b2d42'; X.lineWidth = 3; X.lineJoin = 'round';
+  X.beginPath(); X.moveTo(x - w, y); X.lineTo(x - w, y - 18); X.lineTo(x - w/2, y - 8); X.lineTo(x, y - 22); X.lineTo(x + w/2, y - 8); X.lineTo(x + w, y - 18); X.lineTo(x + w, y); X.closePath(); X.fill(); X.stroke();
+  X.globalAlpha = 1;
+}
+function drawKothBlock(i, alignRight){
+  const name = nameOf(i), c = COL[i], txt = game.score[i] + ' / ' + game.kothPts;
+  X.font = `900 20px ${FONT}`; const nw = X.measureText(name).width + 18, tw = X.measureText(txt).width, w = nw + 22 + tw, h = 38, x0 = alignRight ? -w : 0;
+  X.strokeStyle = '#2b2d42'; X.lineWidth = 3.5;
+  rr(x0, 3, w, h, 19); X.fillStyle = '#2b2d42'; X.fill();
+  rr(x0, 0, w, h, 19); X.fillStyle = '#fffdf6'; X.fill(); X.stroke();
+  rr(x0 + 4, 4, nw, h - 8, 15); X.fillStyle = c.main; X.fill();
+  X.textAlign = 'center'; X.textBaseline = 'middle'; X.fillStyle = '#fff'; X.fillText(name, x0 + 4 + nw/2, h/2 + 1);
+  X.fillStyle = '#2b2d42'; X.fillText(txt, x0 + nw + 12 + tw/2, h/2 + 1);
 }
 // drag-to-fling on the arena (touch or mouse)
 let dragS = null;
@@ -691,14 +765,14 @@ function update(dt){
     }
     for (let s = 0; s < 2; s++) { P.forEach(p => updatePlayer(p, dt/2, game.state === 'play')); collide(P[0], P[1]); }
   }
-  if (game.state === 'play' && P.some(p => p.falling >= 0)) {
+  if (game.state === 'play' && !game.koth && P.some(p => p.falling >= 0)) {
     if (game.pending === null) game.pending = game.sling ? .9 : .55;
     game.pending -= dt;
     if (game.pending <= 0) resolveRound();
   }
   else if (game.state === 'play' && game.sling && game.sub === 'moving') {
     game.moveT += dt;
-    const moving = P.some(p => p.vx || p.vy);
+    const moving = P.some(p => p.falling >= 0 ? p.falling < .8 : (p.vx || p.vy));
     game.still = moving ? 0 : game.still + dt;
     if (game.still > .25 || game.moveT > 8) endTurn();
   }
@@ -805,8 +879,9 @@ function drawIsland(){
   X.setLineDash([18, 16]); X.lineDashOffset = -t*30;
   X.strokeStyle = shrinking ? `rgba(255,${120 - pulse*80},${80 - pulse*60},.9)` : 'rgba(255,255,255,.75)';
   X.lineWidth = 5; X.beginPath(); X.arc(0, 0, R - 18, 0, TAU); X.stroke(); X.setLineDash([]);
-  // centre mark
-  X.strokeStyle = 'rgba(255,255,255,.45)'; X.lineWidth = 5; X.beginPath(); X.arc(0, 0, 36, 0, TAU); X.stroke();
+  // centre mark (or the hill)
+  if (game.koth && !game.demo) kothDrawZone();
+  else { X.strokeStyle = 'rgba(255,255,255,.45)'; X.lineWidth = 5; X.beginPath(); X.arc(0, 0, 36, 0, TAU); X.stroke(); }
 }
 function drawPowerup(pu){
   const c = PU[pu.type].col, b = Math.sin(pu.t*5)*5, s = pu.life < 2 && Math.sin(pu.t*25) > 0 ? .85 : 1, r = 22*s*Math.min(1, pu.t*5);
@@ -917,6 +992,7 @@ function drawScoreBlock(i, alignRight){
   if (game.race) return drawRaceBlock(i, alignRight);
   if (game.golf) return drawGolfBlock(i, alignRight);
   if (game.siege) return drawSiegeBlock(i, alignRight);
+  if (game.koth) return drawKothBlock(i, alignRight);
   const name = nameOf(i), c = COL[i], n = game.target;
   X.font = `900 20px ${FONT}`;
   const nw = X.measureText(name).width + 18, pip = 13, gap = 6, w = nw + 10 + n*(pip*2 + gap) + 8, h = 38;
@@ -2742,13 +2818,19 @@ document.addEventListener('visibilitychange', () => { if (document.hidden && !ga
 seg('#laps', v => game.laps = v);
 seg('#holes', v => game.holes = v);
 seg('#khp', v => game.kingHP = v);
-seg('#mode', v => { game.modeSel = v; game.slingSel = v === 1; renderHelp(); });
+seg('#kpts', v => game.kothPts = v);
+seg('#mode', v => { game.modeSel = v; game.slingSel = v === 1 || v === 7; renderHelp(); });
 const pu = c => `<span class="pu" style="background:${c}"></span>`;
 function renderHelp(){
-$('.tag').textContent = ['Bump your rival off the island!', 'Bump your rival off the island!', 'Flick, pass and score!', 'Fling around the track. First to the finish!', 'Slide, curl and sweep to the button!', 'Fewest strokes wins. Mind the water!', 'Smash the castle, bonk the king!'][game.modeSel];
+$('.tag').textContent = ['Bump your rival off the island!', 'Bump your rival off the island!', 'Flick, pass and score!', 'Fling around the track. First to the finish!', 'Slide, curl and sweep to the button!', 'Fewest strokes wins. Mind the water!', 'Smash the castle, bonk the king!', 'Hold the glowing hill to score!'][game.modeSel];
 $('#lapsRow').style.display = game.modeSel === 3 ? '' : 'none';
 $('#tgtRow').style.display = game.modeSel === 3 || game.modeSel >= 5 ? 'none' : '';
 $('#hpRow').style.display = game.modeSel === 6 ? '' : 'none';
+$('#ptsRow').style.display = game.modeSel === 7 ? '' : 'none';
+if (game.modeSel === 7) { $('#holesRow').style.display = 'none'; $('#help').innerHTML = (isTouch
+  ? `<b>King of the Hill!</b> Take turns flinging your blob.<br><b>Drag back</b> anywhere and let go.`
+  : `<b>King of the Hill!</b> Take turns flinging your blob.<br><span class="r">P1</span>: <b>A</b>/<b>D</b> aim, <b>hold S</b> &amp; release · <span class="bl">P2</span>: <b>←</b> <b>→</b> <b>↓</b> <b>↑</b> · or <b>drag back</b> with the mouse`)
+  + `<br>After every turn, whoever is <b>alone in the glowing hill</b> scores. Knock your rival off for +1. The hill moves every 4 turns!`; return; }
 if (game.modeSel === 6) { $('#holesRow').style.display = 'none'; $('#help').innerHTML = (isTouch
   ? `<b>Siege!</b> Take turns firing cannonballs at the rival castle.<br><b>Tap a firing spot</b> to move · <b>drag back</b> to fire.`
   : `<b>Siege!</b> Take turns firing cannonballs at the rival castle.<br><span class="r">P1</span>: <b>A</b>/<b>D</b> aim, <b>hold S</b> &amp; release to fire, <b>W</b> next firing spot · <span class="bl">P2</span>: <b>←</b> <b>→</b> <b>↓</b> <b>↑</b> · or <b>drag back</b>`)
