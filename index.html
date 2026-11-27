@@ -5,6 +5,13 @@
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
 <meta name="theme-color" content="#5cc8f5">
 <meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Dash Dash">
+<meta name="application-name" content="Dash Dash">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" type="image/png" href="icons/favicon-64.png">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
 <title>Dash Dash!</title>
 <style>
   :root{
@@ -101,6 +108,8 @@
     <div class="opt" id="tgtRow"><span>First to</span><div class="seg" id="tgt"><button data-v="3" class="on">3</button><button data-v="5">5</button><button data-v="7">7</button></div></div>
     <div class="opt"><span>Vibration</span><div class="seg" id="vib"><button data-v="1" class="on">On</button><button data-v="0">Off</button></div></div>
     <div class="help" id="help"></div>
+    <button class="big b3 hidden" id="installBtn" style="width:100%;margin-top:12px">Install app · plays offline</button>
+    <p class="hidden" id="installTip" style="margin:10px 2px 0;font-weight:800;font-size:14px;line-height:1.4"></p>
   </div>
 </div>
 
@@ -379,7 +388,7 @@ function startMatch(mode){
   game.parts = []; game.texts = [];
   $('#menu').classList.add('hidden'); $('#over').classList.add('hidden'); $('#pause').classList.add('hidden');
   held.forEach(h => h.u = h.d = h.l = h.r = 0);
-  if (game.fb || game.race || game.curl || game.golf || game.siege) { const el = document.documentElement; if (el.requestFullscreen && !document.fullscreenElement) el.requestFullscreen().catch(() => {}); }
+  if (!isStandalone && (game.fb || game.race || game.curl || game.golf || game.siege)) { const el = document.documentElement; if (el.requestFullscreen && !document.fullscreenElement) el.requestFullscreen().catch(() => {}); }
   layout(); if (game.fb) fbInit(); else if (game.race) rcInit(); else if (game.curl) clInit(); else if (game.golf) glInit(); else if (game.siege) sgInit(); else startRound();
 }
 function startDemo(){
@@ -3003,6 +3012,29 @@ $('#help').innerHTML = game.slingSel ? (isTouch
   : `<span class="r">P1</span>: <b>W</b> <b>A</b> <b>S</b> <b>D</b> &nbsp; <span class="bl">P2</span>: <b>↑</b> <b>←</b> <b>↓</b> <b>→</b><br><b>Double-tap</b> a direction to <b>DASH</b>!<br>Solo? Either set of keys works.<br>${pu(PU.big.col)} Big &nbsp;${pu(PU.turbo.col)} Turbo &nbsp;${pu(PU.boing.col)} Boing · the island shrinks! · <b>P</b> pause`;
 }
 renderHelp();
+
+// ---------- installable app / offline ----------
+// The service worker only runs from a real web address (https:// or localhost), not from a file opened directly;
+// a downloaded index.html still plays offline on its own.
+const isStandalone = matchMedia('(display-mode: standalone)').matches || matchMedia('(display-mode: fullscreen)').matches || navigator.standalone === true;
+if ('serviceWorker' in navigator && /^https?:$/.test(location.protocol)) {
+  addEventListener('load', () => navigator.serviceWorker.register('sw.js').catch(() => {}));
+}
+let installEvt = null;
+addEventListener('beforeinstallprompt', e => { e.preventDefault(); installEvt = e; if (!isStandalone) $('#installBtn').classList.remove('hidden'); });
+addEventListener('appinstalled', () => { installEvt = null; $('#installBtn').classList.add('hidden'); $('#installTip').classList.add('hidden'); });
+$('#installBtn').onclick = async () => {
+  if (!installEvt) return;
+  installEvt.prompt();
+  try { await installEvt.userChoice; } catch(e){}
+  installEvt = null; $('#installBtn').classList.add('hidden');
+};
+// iPhone / iPad Safari has no install prompt: show how to add it to the home screen instead
+if (!isStandalone && /iphone|ipad|ipod/i.test(navigator.userAgent) && /^https?:$/.test(location.protocol)) {
+  const tip = $('#installTip');
+  tip.innerHTML = 'Play offline as an app: tap <b>Share</b> then <b>Add to Home Screen</b>.';
+  tip.classList.remove('hidden');
+}
 
 // ---------- loop ----------
 let last = performance.now();
