@@ -1,7 +1,7 @@
 // Dash Dash! offline support.
 // Everything the game needs is cached on first visit; afterwards it starts with no network at all.
 // Bump VERSION whenever any file changes so installed copies pick up the update.
-const VERSION = 'dashdash-v1';
+const VERSION = 'dashdash-v2';
 const ASSETS = [
   './',
   './index.html',
@@ -14,7 +14,7 @@ const ASSETS = [
 ];
 
 self.addEventListener('install', e => {
-  e.waitUntil(caches.open(VERSION).then(c => c.addAll(ASSETS)).then(() => self.skipWaiting()));
+  e.waitUntil(caches.open(VERSION).then(c => c.addAll(ASSETS.map(u => new Request(u, { cache:'reload' })))).then(() => self.skipWaiting()));
 });
 
 self.addEventListener('activate', e => {

@@ -3,6 +3,8 @@
 A cartoony party game for 1–2 players (or 1 player vs CPU), playable with 4 keys per player or by touch.
 Modes: Real-time brawl, Slingshot, Football, Race (random tile tracks), Curling, Mini-golf, Siege and King of the Hill.
 
+**Wardrobe:** win a match in each mode (beat the CPU, or any 2-player win) to unlock that mode's accessory, then pick what P1 and P2/CPU wear. Unlocks are saved on the device.
+
 ## Play
 
 - **Quickest:** open `index.html` in any browser. It is fully self-contained and works offline.

@@ -22,7 +22,8 @@
   *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
   html,body{margin:0;height:100%;overflow:hidden;background:#5cc8f5;font-family:var(--font);color:var(--ink);
     touch-action:none;user-select:none;-webkit-user-select:none;-webkit-touch-callout:none;overscroll-behavior:none}
-  canvas{position:fixed;inset:0;display:block}
+  #c{position:fixed;inset:0;display:block}
+  .witem canvas,#unlockCv{display:block;flex:none}
   .overlay{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;padding:16px;z-index:10;
     background:rgba(92,200,245,.35);backdrop-filter:blur(2px);-webkit-backdrop-filter:blur(2px)}
   .hidden{display:none!important}
@@ -62,6 +63,12 @@
   #overTitle{font-size:clamp(34px,10vw,48px);margin:4px 0;font-weight:900;-webkit-text-stroke:2px var(--ink);paint-order:stroke fill;text-shadow:0 4px 0 var(--ink)}
   #overSub{font-weight:800;font-size:18px;margin:0 0 16px}
   /* touch pads */
+  #wardWho button{grid-column:span 6}
+  .wgrid{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin:12px 0 14px}
+  .witem{border:3px solid var(--ink);border-radius:14px;background:#fff;padding:4px 2px 6px;font-weight:800;font-size:13px;display:flex;flex-direction:column;align-items:center;line-height:1.15;box-shadow:0 3px 0 var(--ink)}
+  .witem.on{background:var(--sun)} .witem.locked{background:#f1f3f5;color:#868e96} .witem small{font-size:11px;font-weight:700}
+  #unlockBox{display:flex;align-items:center;gap:10px;background:#fff9db;border:3px dashed #fcc419;border-radius:16px;padding:8px 10px;margin:0 0 14px;text-align:left;font-size:14px;font-weight:700}
+  #unlockBox b{font-size:17px}
   .pad{position:fixed;z-index:5;border-radius:50%;background:rgba(255,255,255,.55);border:4px solid var(--ink);
     box-shadow:0 6px 0 rgba(43,45,66,.5);touch-action:none;display:none}
   .pad .arr{position:absolute;width:34%;height:34%;border-radius:22%;border:4px solid var(--ink);background:var(--pc);
@@ -97,6 +104,7 @@
       <button class="big b1" id="play1">1 Player<small>vs CPU</small></button>
       <button class="big b2" id="play2">2 Players<small>same device</small></button>
     </div>
+    <button class="big b3" id="wardBtn" style="width:100%;margin:0 0 12px;padding:9px;font-size:17px">Wardrobe</button>
     <div class="seg wide" id="mode"><button data-v="0" class="on">Real-time</button><button data-v="1">Slingshot</button><button data-v="2">Football</button><button data-v="3">Race</button><button data-v="4">Curling</button><button data-v="5">Golf</button><button data-v="6">Siege</button><button data-v="7">Hill</button></div>
     <div class="opt"><span>CPU level</span><div class="seg" id="diff"><button data-v="0">Easy</button><button data-v="1" class="on">Normal</button><button data-v="2">Hard</button></div></div>
     <div class="opt rcopt" style="display:none"><span>Track</span><div class="seg" id="rsize"><button data-v="0">Short</button><button data-v="1" class="on">Medium</button><button data-v="2">Long</button></div></div>
@@ -123,10 +131,24 @@
   </div>
 </div>
 
+<div id="ward" class="overlay hidden">
+  <div class="card">
+    <div class="logo" style="font-size:clamp(30px,9vw,42px)"><span>W</span><span>A</span><span>R</span><span>D</span><span>R</span><span>O</span><span>B</span><span>E</span></div>
+    <p class="tag" style="margin:4px 0 10px">Win a match in each mode to unlock its item.<br><small>vs CPU: beat it · 2 players: any win</small></p>
+    <div class="seg wide" id="wardWho"><button data-v="0" class="on">P1 wears</button><button data-v="1">P2 / CPU wears</button></div>
+    <div class="wgrid" id="wardGrid"></div>
+    <button class="big b2" id="wardClose" style="width:100%">Done</button>
+  </div>
+</div>
+
 <div id="over" class="overlay hidden">
   <div class="card">
     <div id="winTitle" class="logo" style="font-size:clamp(34px,10vw,48px)"></div>
     <p id="overSub"></p>
+    <div id="unlockBox" class="hidden">
+      <canvas id="unlockCv" style="width:72px;height:72px"></canvas>
+      <div><b id="unlockName"></b><br><span id="unlockSub"></span></div>
+    </div>
     <div class="row">
       <button class="big b3" id="again">Rematch</button>
       <button class="big b2" id="toMenu">Menu</button>
@@ -137,7 +159,8 @@
 <script>
 'use strict';
 const $ = s => document.querySelector(s);
-const C = $('#c'), X = C.getContext('2d');
+const C = $('#c');
+let X = C.getContext('2d');   // swapped briefly to draw wardrobe previews
 const FONT = '"Baloo 2","Nunito","Arial Rounded MT Bold","Trebuchet MS",ui-rounded,system-ui,sans-serif';
 const isTouch = matchMedia('(pointer:coarse)').matches || ('ontouchstart' in window) || navigator.maxTouchPoints > 0;
 const TAU = Math.PI * 2;
@@ -382,7 +405,7 @@ function startRound(){
   if (!game.demo) { banner('3'); sfx.beep(false); }
 }
 function startMatch(mode){
-  game.demo = false; game.mode = mode; game.score = [0,0]; game.paused = false; game.fb = game.modeSel === 2; game.race = game.modeSel === 3; game.curl = game.modeSel === 4; game.golf = game.modeSel === 5; game.siege = game.modeSel === 6; game.koth = game.modeSel === 7; game.sling = game.slingSel && !game.fb; game.roundNo = 0;
+  game.demo = false; game.mode = mode; game.playMode = game.modeSel; game.score = [0,0]; game.paused = false; game.fb = game.modeSel === 2; game.race = game.modeSel === 3; game.curl = game.modeSel === 4; game.golf = game.modeSel === 5; game.siege = game.modeSel === 6; game.koth = game.modeSel === 7; game.sling = game.slingSel && !game.fb; game.roundNo = 0;
   pads.forEach((el, i) => el.querySelector('.hint').textContent = 'P' + (i+1) + (game.sling ? ' · ←→ aim · hold ↓, let go' : ' · double-tap = DASH'));
   game.players = [makePlayer(0, false), makePlayer(1, mode === 1)];
   game.parts = []; game.texts = [];
@@ -835,6 +858,13 @@ function matchOver(w){
   t.style.color = COL[w].main;
   t.style.webkitTextStroke = '3px #2b2d42'; t.style.paintOrder = 'stroke fill'; t.style.textShadow = '0 4px 0 #2b2d42';
   $('#overSub').textContent = game.siege ? ('The castle has fallen' + (game.mode === 1 && w === 1 ? ' · try again!' : '!')) : game.golf ? ('Strokes ' + gl.total[0] + ' – ' + gl.total[1] + ' over ' + game.holes + ' holes' + (game.mode === 1 && w === 1 ? ' · try again!' : ' · nice putting!')) : game.race ? (game.laps + (game.laps > 1 ? ' laps' : ' lap') + ' · ' + (game.mode === 1 && w === 1 ? 'try again!' : 'checkered flag!')) : 'Final score ' + game.score[0] + ' – ' + game.score[1] + (game.mode === 1 && w === 1 ? ' · try again!' : game.fb || game.curl ? ' · what a match!' : ' · splendid splashing!');
+  const got = tryUnlock(w);
+  if (got >= 0) {
+    $('#unlockName').textContent = 'NEW ITEM: ' + ACC[got].name + '!';
+    $('#unlockSub').textContent = save.wear[w] === got ? 'Now worn by ' + (game.mode === 1 ? 'you' : nameOf(w)) + '. Swap items in the Wardrobe.' : 'Put it on in the Wardrobe.';
+    $('#unlockBox').classList.remove('hidden'); previewBlob($('#unlockCv'), w, got, false);
+    setTimeout(() => { [784, 988, 1175, 1568].forEach((f, k) => tone(f, f, .16, 'triangle', .12, k*.1)); buzz([30, 40, 30, 40, 80]); }, 900);
+  } else $('#unlockBox').classList.add('hidden');
   setTimeout(() => { if (game.state === 'over') $('#over').classList.remove('hidden'); }, 700);
   layout();
 }
@@ -979,14 +1009,15 @@ function drawPlayer(p){
   if (p.dashT > 0 || p.falling >= 0) { X.beginPath(); X.ellipse(mx, my, r*.1, r*.13, 0, 0, TAU); X.fill(); }
   else if (p.stun > 0) { X.beginPath(); X.moveTo(mx - r*.15, my); for (let k = 1; k <= 4; k++) X.lineTo(mx - r*.15 + k*r*.075, my + (k%2 ? -3 : 3)); X.stroke(); }
   else { X.beginPath(); X.arc(mx, my - r*.06, r*.14, .15*Math.PI, .85*Math.PI); X.stroke(); }
+  { const a = p.acc !== undefined ? p.acc : save.wear[p.i]; if (a >= 0 && !p.king) drawAcc(a, r, fx, p.i); }
   X.restore();
   if (p.stun > 0 && p.falling < 0) {
     for (let k = 0; k < 3; k++) { const a = game.t*7 + k*TAU/3; star(p.x + Math.cos(a)*r*.7, p.y - r - 8 + Math.sin(a)*6, 7, '#ffe066'); }
   }
   // name tag
-  if (p.falling < 0 && !game.demo && !game.fb && !game.race && !game.curl && !game.golf && !game.siege) {
+  if (p.falling < 0 && !p.noTag && !game.demo && !game.fb && !game.race && !game.curl && !game.golf && !game.siege) {
     const lbl = nameOf(p.i); X.font = `900 18px ${FONT}`; const w = X.measureText(lbl).width + 14;
-    const ty = p.y - p.r - 30;
+    const wa = p.acc !== undefined ? p.acc : save.wear[p.i], tall = [1, 2, 4, 6, 7].includes(wa), ty = p.y - p.r - (tall ? p.r*.55 + 26 : 30);
     X.fillStyle = c.main; X.strokeStyle = '#2b2d42'; X.lineWidth = 3; rr(p.x - w/2, ty - 12, w, 24, 10); X.fill(); X.stroke();
     X.fillStyle = '#fff'; X.textAlign = 'center'; X.textBaseline = 'middle'; X.fillText(lbl, p.x, ty + 1);
     if (game.sling && game.state === 'play' && game.sub === 'aim' && game.turn === p.i) {
@@ -2365,7 +2396,7 @@ function glAfterStop(){
 function glFinish(){
   const [a, b] = gl.total;
   if (a !== b) return matchOver(a < b ? 0 : 1);
-  game.state = 'over'; sfx.win();
+  game.state = 'over'; sfx.win(); $('#unlockBox').classList.add('hidden');
   const t = $('#winTitle'); t.textContent = 'TIE GAME!'; t.style.color = '#ffd43b';
   t.style.webkitTextStroke = '3px #2b2d42'; t.style.paintOrder = 'stroke fill'; t.style.textShadow = '0 4px 0 #2b2d42';
   $('#overSub').textContent = 'Both on ' + a + ' strokes · play again?';
@@ -2942,6 +2973,139 @@ function drawSiegeBlock(i, alignRight){
   }
 }
 
+// ---------- unlockable accessories (one per mode) ----------
+const ACC = [
+  { name:'Ninja band',     mode:'Real-time' },
+  { name:'Propeller cap',  mode:'Slingshot' },
+  { name:'Sports cap',     mode:'Football' },
+  { name:'Racing goggles', mode:'Race' },
+  { name:'Bobble hat',     mode:'Curling' },
+  { name:'Bow tie',        mode:'Golf' },
+  { name:'Viking helmet',  mode:'Siege' },
+  { name:'Golden crown',   mode:'Hill' }
+];
+const SAVE_KEY = 'dashdash.save';
+const save = (() => {
+  const d = { unlocked:[], wear:[-1, -1] };
+  try { const s = JSON.parse(localStorage.getItem(SAVE_KEY) || '{}'); return { unlocked:Array.isArray(s.unlocked) ? s.unlocked : [], wear:Array.isArray(s.wear) ? s.wear : [-1, -1] }; }
+  catch(e) { return d; }
+})();
+function persist(){ try { localStorage.setItem(SAVE_KEY, JSON.stringify(save)); } catch(e){} }
+// drawn in the blob's own frame (centre 0,0, radius r), so it squashes and bounces with the blob
+function drawAcc(id, r, fx, team){
+  const INK = '#2b2d42', s = fx >= 0 ? 1 : -1, lw = Math.max(2, r*.09);
+  X.save(); X.lineJoin = 'round'; X.lineCap = 'round'; X.strokeStyle = INK; X.lineWidth = lw;
+  const clipHead = () => { X.beginPath(); X.arc(0, 0, r - 1, 0, TAU); X.clip(); };
+  switch (id) {
+    case 0: { // ninja band
+      X.save(); clipHead(); X.fillStyle = '#e03131'; X.fillRect(-r, -r*.64, 2*r, r*.26);
+      X.beginPath(); X.moveTo(-r, -r*.64); X.lineTo(r, -r*.64); X.moveTo(-r, -r*.38); X.lineTo(r, -r*.38); X.stroke(); X.restore();
+      const kx = -s*r*.9, ky = -r*.5, w = Math.sin(game.t*8)*r*.07;
+      X.fillStyle = '#e03131';
+      for (const k of [0, 1]) {
+        X.beginPath(); X.moveTo(kx, ky - r*.06);
+        X.quadraticCurveTo(kx - s*r*.4, ky + r*(.04 + k*.22) + w, kx - s*r*.78, ky + r*(.0 + k*.34) - w);
+        X.lineTo(kx - s*r*.72, ky + r*(.16 + k*.34) - w);
+        X.quadraticCurveTo(kx - s*r*.36, ky + r*(.18 + k*.22) + w, kx, ky + r*.08);
+        X.closePath(); X.fill(); X.stroke();
+      }
+      X.beginPath(); X.arc(kx, ky, r*.12, 0, TAU); X.fill(); X.stroke();
+    } break;
+    case 1: { // propeller beanie
+      X.fillStyle = '#ffd43b'; X.beginPath(); X.arc(0, -r*.6, r*.62, Math.PI, 0); X.closePath(); X.fill(); X.stroke();
+      X.fillStyle = '#4dabf7'; X.beginPath(); X.moveTo(0, -r*.6); X.arc(0, -r*.6, r*.62, Math.PI*1.34, Math.PI*1.66); X.closePath(); X.fill(); X.stroke();
+      X.beginPath(); X.moveTo(0, -r*1.22); X.lineTo(0, -r*1.42); X.stroke();
+      const a = game.t*14, L = r*.62;
+      X.fillStyle = '#ff6b6b';
+      for (const k of [0, Math.PI]) { const c = Math.cos(a + k); X.beginPath(); X.ellipse(c*L*.5, -r*1.44, Math.abs(c)*L*.5 + 1, r*.1, 0, 0, TAU); X.fill(); X.stroke(); }
+      X.fillStyle = INK; X.beginPath(); X.arc(0, -r*1.44, r*.07, 0, TAU); X.fill();
+    } break;
+    case 2: { // sports cap in team colour, brim towards where the blob looks
+      const c = COL[team] ? COL[team].dark : '#1c6fb8';
+      X.fillStyle = c; X.beginPath(); X.moveTo(-r*.74, -r*.48); X.quadraticCurveTo(-r*.72, -r*1.12, 0, -r*1.12); X.quadraticCurveTo(r*.72, -r*1.12, r*.74, -r*.48); X.closePath(); X.fill(); X.stroke();
+      X.beginPath(); X.moveTo(s*r*.15, -r*.52); X.quadraticCurveTo(s*r*1.0, -r*.64, s*r*1.18, -r*.44); X.quadraticCurveTo(s*r*.8, -r*.36, s*r*.05, -r*.44); X.closePath(); X.fill(); X.stroke();
+      X.fillStyle = '#fff'; X.beginPath(); X.arc(0, -r*.84, r*.14, 0, TAU); X.fill();
+      X.fillStyle = c; X.beginPath(); X.arc(0, -r*1.12, r*.08, 0, TAU); X.fill(); X.stroke();
+    } break;
+    case 3: { // racing goggles up on the forehead
+      X.save(); clipHead(); X.fillStyle = '#495057'; X.fillRect(-r, -r*.74, 2*r, r*.16); X.restore();
+      for (const sx of [-1, 1]) {
+        X.fillStyle = '#f1f3f5'; X.beginPath(); X.ellipse(sx*r*.3, -r*.66, r*.27, r*.21, 0, 0, TAU); X.fill(); X.stroke();
+        X.fillStyle = '#74c0fc'; X.beginPath(); X.ellipse(sx*r*.3, -r*.66, r*.17, r*.12, 0, 0, TAU); X.fill();
+        X.fillStyle = 'rgba(255,255,255,.85)'; X.beginPath(); X.arc(sx*r*.3 - r*.06, -r*.7, r*.05, 0, TAU); X.fill();
+      }
+      X.beginPath(); X.moveTo(-r*.04, -r*.66); X.lineTo(r*.04, -r*.66); X.stroke();
+    } break;
+    case 4: { // bobble hat
+      X.fillStyle = '#f06595'; X.beginPath(); X.moveTo(-r*.8, -r*.45); X.quadraticCurveTo(-r*.76, -r*1.2, 0, -r*1.18); X.quadraticCurveTo(r*.76, -r*1.2, r*.8, -r*.45); X.closePath(); X.fill(); X.stroke();
+      X.strokeStyle = '#fff'; X.lineWidth = r*.09; X.beginPath(); X.moveTo(-r*.58, -r*.86); X.lineTo(r*.58, -r*.86); X.stroke();
+      X.strokeStyle = INK; X.lineWidth = lw;
+      X.fillStyle = '#fff'; rr(-r*.86, -r*.62, r*1.72, r*.24, r*.1); X.fill(); X.stroke();
+      X.beginPath(); X.arc(0, -r*1.26, r*.2, 0, TAU); X.fill(); X.stroke();
+    } break;
+    case 5: { // bow tie
+      const y = r*.74; X.fillStyle = '#be4bdb';
+      for (const sx of [-1, 1]) { X.beginPath(); X.moveTo(0, y); X.lineTo(sx*r*.44, y - r*.23); X.lineTo(sx*r*.44, y + r*.23); X.closePath(); X.fill(); X.stroke(); }
+      X.beginPath(); X.arc(0, y, r*.1, 0, TAU); X.fill(); X.stroke();
+      X.fillStyle = 'rgba(255,255,255,.65)'; for (const sx of [-1, 1]) { X.beginPath(); X.arc(sx*r*.28, y, r*.045, 0, TAU); X.fill(); }
+    } break;
+    case 6: { // viking helmet
+      X.fillStyle = '#fff3bf';
+      for (const sx of [-1, 1]) { X.beginPath(); X.moveTo(sx*r*.55, -r*.68); X.quadraticCurveTo(sx*r*1.15, -r*.84, sx*r*1.05, -r*1.45); X.quadraticCurveTo(sx*r*.86, -r*1.0, sx*r*.42, -r*.94); X.closePath(); X.fill(); X.stroke(); }
+      X.fillStyle = '#adb5bd'; X.beginPath(); X.arc(0, -r*.55, r*.68, Math.PI, 0); X.closePath(); X.fill(); X.stroke();
+      X.fillStyle = '#868e96'; rr(-r*.76, -r*.63, r*1.52, r*.17, r*.06); X.fill(); X.stroke();
+      X.fillStyle = '#fff'; for (const k of [-1, 0, 1]) { X.beginPath(); X.arc(k*r*.48, -r*.545, r*.045, 0, TAU); X.fill(); }
+    } break;
+    case 7: { // golden crown
+      const y = -r*.7, w = r*.64;
+      X.fillStyle = '#ffd43b'; X.beginPath(); X.moveTo(-w, y); X.lineTo(-w, y - r*.44); X.lineTo(-w/2, y - r*.18); X.lineTo(0, y - r*.52); X.lineTo(w/2, y - r*.18); X.lineTo(w, y - r*.44); X.lineTo(w, y); X.closePath(); X.fill(); X.stroke();
+      X.fillStyle = '#ff6b6b'; X.beginPath(); X.arc(0, y - r*.12, r*.08, 0, TAU); X.fill();
+      X.fillStyle = '#4dabf7'; for (const sx of [-1, 1]) { X.beginPath(); X.arc(sx*w*.62, y - r*.1, r*.06, 0, TAU); X.fill(); }
+    } break;
+  }
+  X.restore();
+}
+// small preview of a blob wearing an item (wardrobe + unlock card)
+function previewBlob(cv, team, acc, locked){
+  const dpr = Math.min(2, devicePixelRatio || 1), sz = parseFloat(cv.style.width) || 64;
+  cv.width = sz*dpr; cv.height = sz*dpr;
+  const saved = X; X = cv.getContext('2d');
+  try {
+    X.setTransform(dpr, 0, 0, dpr, 0, 0); X.clearRect(0, 0, sz, sz);
+    const r = sz*.27, x = sz/2, y = sz*.62;
+    if (locked) {
+      X.fillStyle = '#dee2e6'; X.strokeStyle = '#adb5bd'; X.lineWidth = 3; X.beginPath(); X.arc(x, y, r, 0, TAU); X.fill(); X.stroke();
+      X.textAlign = 'center'; X.textBaseline = 'middle'; outlinedText('?', x, y, r*1.3, '#fff', '#adb5bd');
+    } else drawPlayer({ i:team, x, y, r, vx:0, vy:0, fx:.35, fy:.5, falling:-1, trail:[], pu:{}, cd:0, blink:1, hit:0, stun:0, dashT:0, ox:0, oy:0, acc, noTag:true });
+  } finally { X = saved; }
+}
+function tryUnlock(w){
+  const id = game.playMode;
+  if (id === undefined || id < 0 || id >= ACC.length) return -1;
+  if (game.mode === 1 && w !== 0) return -1;          // vs CPU: you have to beat it
+  if (save.unlocked.includes(id)) return -1;
+  save.unlocked.push(id);
+  if (save.wear[w] === undefined || save.wear[w] < 0) save.wear[w] = id;   // put it straight on the winner
+  persist(); updateWardBtn();
+  return id;
+}
+let wardWho = 0;
+function updateWardBtn(){ const b = $('#wardBtn'); if (b) b.textContent = 'Wardrobe · ' + save.unlocked.length + '/' + ACC.length + ' items'; }
+function renderWard(){
+  const g = $('#wardGrid'); g.innerHTML = '';
+  [-1, ...ACC.keys()].forEach(id => {
+    const locked = id >= 0 && !save.unlocked.includes(id);
+    const b = document.createElement('button');
+    b.className = 'witem' + (save.wear[wardWho] === id ? ' on' : '') + (locked ? ' locked' : '');
+    b.innerHTML = `<canvas style="width:64px;height:64px"></canvas><span>${id < 0 ? 'None' : locked ? '???' : ACC[id].name}</span>${locked ? `<small>Win ${ACC[id].mode}</small>` : ''}`;
+    g.appendChild(b);
+    previewBlob(b.querySelector('canvas'), wardWho, id, locked);
+    b.onclick = () => {
+      if (locked) { buzz(30, true); tone(200, 150, .12, 'square', .06); return; }
+      save.wear[wardWho] = id; persist(); renderWard(); buzz(12, true); tone(600, 900, .08, 'triangle', .08);
+    };
+  });
+}
 // ---------- menu / UI ----------
 function seg(id, cb){
   const el = $(id);
@@ -2964,6 +3128,10 @@ function togglePause(){ if (game.demo) return; game.paused = !game.paused; $('#p
 document.addEventListener('visibilitychange', () => { if (document.hidden && !game.demo && !game.paused && game.state !== 'over') togglePause(); });
 
 seg('#laps', v => game.laps = v);
+seg('#wardWho', v => { wardWho = v; renderWard(); });
+$('#wardBtn').onclick = () => { $('#ward').classList.remove('hidden'); renderWard(); };
+$('#wardClose').onclick = () => { $('#ward').classList.add('hidden'); };
+updateWardBtn();
 seg('#rsize', v => game.rsize = v);
 seg('#rbar', v => game.rbar = v);
 seg('#vib', v => { game.vib = !!v; buzz(40, true); });
@@ -3019,6 +3187,13 @@ renderHelp();
 const isStandalone = matchMedia('(display-mode: standalone)').matches || matchMedia('(display-mode: fullscreen)').matches || navigator.standalone === true;
 if ('serviceWorker' in navigator && /^https?:$/.test(location.protocol)) {
   addEventListener('load', () => navigator.serviceWorker.register('sw.js').catch(() => {}));
+  // an installed copy that just received a new version: refresh once, but only while sitting on the menu
+  const hadController = !!navigator.serviceWorker.controller; let refreshed = false;
+  navigator.serviceWorker.addEventListener('controllerchange', () => {
+    if (!hadController || refreshed) return;
+    refreshed = true;
+    if (game.demo && $('#ward').classList.contains('hidden')) location.reload();
+  });
 }
 let installEvt = null;
 addEventListener('beforeinstallprompt', e => { e.preventDefault(); installEvt = e; if (!isStandalone) $('#installBtn').classList.remove('hidden'); });
